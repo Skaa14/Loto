@@ -4,576 +4,918 @@ from tkinter import messagebox
 
 
 class LottoApp:
-    """Application de gestion de loto (1 a 90)."""
+    """Application desktop de loto francais (1 a 90)."""
 
-    BG_START = "#0f172a"
-    BG_END = "#1d4ed8"
-    PANEL = "#111827"
-    PANEL_ALT = "#1f2937"
-    TEXT = "#f9fafb"
-    MUTED = "#cbd5e1"
-    ACCENT = "#f59e0b"
-    SUCCESS = "#22c55e"
-    DANGER = "#ef4444"
+    LIGHT_THEME = {
+        "app_bg": "#f4efe5",
+        "panel_bg": "#fffaf4",
+        "panel_alt": "#efe6d7",
+        "soft_green": "#e8f1e7",
+        "soft_terracotta": "#f5e3dc",
+        "soft_gold": "#f9efd0",
+        "soft_blue": "#e7eef5",
+        "deep_green": "#2f5d4a",
+        "gold": "#c99a42",
+        "terracotta": "#c26f53",
+        "ink": "#25312d",
+        "muted": "#75807c",
+        "input_bg": "#ffffff",
+        "grid_idle": "#e6ddcf",
+        "grid_drawn": "#ffd67b",
+        "grid_drawn_text": "#2e2a22",
+        "toggle_bg": "#d9e5df",
+        "toggle_fg": "#2f5d4a",
+        "history_bg": "#efe6d7",
+        "undo_bg": "#a6b4b1",
+        "gain_quine": "#8f6a5f",
+    }
+
+    DARK_THEME = {
+        "app_bg": "#14181d",
+        "panel_bg": "#1d242b",
+        "panel_alt": "#28313a",
+        "soft_green": "#22362e",
+        "soft_terracotta": "#3a2b2a",
+        "soft_gold": "#3a3321",
+        "soft_blue": "#202f3c",
+        "deep_green": "#72c29a",
+        "gold": "#e4b85a",
+        "terracotta": "#d98b70",
+        "ink": "#eef2f3",
+        "muted": "#a9b4ba",
+        "input_bg": "#11161b",
+        "grid_idle": "#303942",
+        "grid_drawn": "#e4b85a",
+        "grid_drawn_text": "#181d21",
+        "toggle_bg": "#2b3943",
+        "toggle_fg": "#eef2f3",
+        "history_bg": "#151b20",
+        "undo_bg": "#51606b",
+        "gain_quine": "#9f7e74",
+    }
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Loto 1-90")
-        self.root.geometry("1366x820")
-        self.root.minsize(860, 620)
+        self.root.title("Loto Francais")
+        self.root.geometry("1420x920")
+        self.root.minsize(1120, 760)
 
         self.drawn_numbers: list[int] = []
-        self.draw_history: list[tuple[int, str]] = []
         self.undo_stack: list[dict[str, object]] = []
-        self.current_gain = tk.StringVar(value="")
         self.animation_running = False
         self.compact_layout = False
+        self.editing_title = False
+        self.current_gain = ""
+        self.last_clicked_number: int | None = None
+        self.grid_cells: dict[int, tk.Label] = {}
 
-        self.bg_canvas = tk.Canvas(self.root, highlightthickness=0)
-        self.bg_canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
-        self.bg_canvas.bind("<Configure>", self._draw_gradient)
+        self.is_dark_mode = tk.BooleanVar(value=True)
+        self.title_var = tk.StringVar(value="Loto Francais")
+        self.manual_var = tk.StringVar()
+        self.counter_var = tk.StringVar(value="0 / 90")
+        self.animation_var = tk.StringVar(value="--")
+        self.gain_var = tk.StringVar(value="Aucune annonce")
 
-        self.main = tk.Frame(self.root, bg="")
-        self.main.place(relx=0.02, rely=0.03, relwidth=0.96, relheight=0.94)
+        self.theme = self.DARK_THEME.copy()
+        self.root.configure(bg=self.theme["app_bg"])
 
-        self._build_layout()
-        self._refresh_recent_labels()
-        self._refresh_history()
-        self._update_header_display()
+        self.root_frame = tk.Frame(self.root, bg=self.theme["app_bg"])
+        self.root_frame.pack(fill="both", expand=True, padx=18, pady=18)
 
-        self.root.bind("<Return>", self._on_enter)
-        self.root.bind("<Configure>", self._on_root_resize)
+        self.header_card = self._create_card(self.root_frame)
+        self.header_card.pack(fill="x", pady=(0, 18))
 
-    def _build_layout(self) -> None:
-        self.main.columnconfigure(0, weight=2)
-        self.main.columnconfigure(1, weight=3)
-        self.main.rowconfigure(0, weight=1)
+        self.content_frame = tk.Frame(self.root_frame, bg=self.theme["app_bg"])
+        self.content_frame.pack(fill="both", expand=True)
 
-        self.left_panel = tk.Frame(self.main, bg=self.PANEL, bd=0, highlightthickness=0)
-        self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        self._build_header()
+        self._build_content()
+        self._bind_events()
+        self._refresh_view()
+        self._apply_theme()
 
-        self.right_panel = tk.Frame(self.main, bg=self.PANEL_ALT, bd=0, highlightthickness=0)
-        self.right_panel.grid(row=0, column=1, sticky="nsew", padx=(12, 0))
+    def _build_header(self) -> None:
+        self.header_left = tk.Frame(self.header_card, bg=self.theme["panel_bg"])
+        self.header_left.pack(side="left", fill="x", expand=True, padx=20, pady=18)
 
-        self._build_left_panel()
-        self._build_right_panel()
+        self.header_title_wrap = tk.Frame(self.header_left, bg=self.theme["panel_bg"])
+        self.header_title_wrap.pack(anchor="w")
 
-    def _build_left_panel(self) -> None:
-        self.left_panel.columnconfigure(0, weight=1)
-
-        self.title_var = tk.StringVar(value="LOTO FRANCAIS")
-        self.title_entry = tk.Entry(
-            self.left_panel,
+        self.header_title_label = tk.Label(
+            self.header_title_wrap,
             textvariable=self.title_var,
-            fg=self.TEXT,
-            bg=self.PANEL,
             font=("Segoe UI", 26, "bold"),
-            justify="center",
+            cursor="xterm",
+        )
+        self.header_title_label.pack(anchor="w")
+        self.header_title_label.bind("<Button-1>", lambda _event: self.begin_title_edit())
+
+        self.title_entry = tk.Entry(
+            self.header_title_wrap,
+            textvariable=self.title_var,
             bd=0,
             relief="flat",
-            insertbackground=self.TEXT,
+            font=("Segoe UI", 25, "bold"),
+            width=24,
+            insertwidth=2,
         )
-        self.title_entry.pack(fill="x", padx=16, pady=(18, 18), ipady=4)
+        self.title_entry.bind("<Return>", lambda _event: self.finish_title_edit())
+        self.title_entry.bind("<Escape>", lambda _event: self.cancel_title_edit())
+        self.title_entry.bind("<FocusOut>", lambda _event: self.finish_title_edit())
 
-        recent_frame = tk.Frame(self.left_panel, bg=self.PANEL_ALT)
-        recent_frame.pack(fill="x", padx=16, pady=(0, 12))
-
-        self.rolling_label = tk.Label(
-            recent_frame,
-            text="",
-            fg="#fde68a",
-            bg=self.PANEL_ALT,
-            font=("Segoe UI Black", 30),
+        self.header_subtitle_label = tk.Label(
+            self.header_left,
+            text="Tableau de tirage 1 a 90",
+            font=("Segoe UI", 13),
+            anchor="w",
         )
-        self.rolling_label.pack(pady=(16, 0))
+        self.header_subtitle_label.pack(anchor="w", pady=(4, 0))
 
-        self.last_label = tk.Label(
-            recent_frame,
-            text="--",
-            fg=self.ACCENT,
-            bg=self.PANEL_ALT,
-            font=("Segoe UI Black", 120),
+        self.header_right = tk.Frame(self.header_card, bg=self.theme["panel_bg"])
+        self.header_right.pack(side="right", padx=20, pady=18)
+
+        self.theme_toggle_button = self._create_button(
+            self.header_right, "Mode sombre", self.toggle_theme, self.theme["toggle_bg"], self.theme["toggle_fg"]
         )
-        self.last_label.pack(pady=(8, 0))
+        self.theme_toggle_button.pack(side="right")
 
-        self.second_label = tk.Label(
-            recent_frame,
-            text="--",
-            fg=self.TEXT,
-            bg=self.PANEL_ALT,
-            font=("Segoe UI", 52, "bold"),
+        self.title_hint_label = tk.Label(
+            self.header_right,
+            text="Cliquer sur le titre pour modifier",
+            font=("Segoe UI", 11),
         )
-        self.second_label.pack()
+        self.title_hint_label.pack(side="right", padx=(0, 12))
 
-        self.third_label = tk.Label(
-            recent_frame,
-            text="--",
-            fg=self.MUTED,
-            bg=self.PANEL_ALT,
-            font=("Segoe UI", 34),
+    def _build_content(self) -> None:
+        self.content_frame.grid_rowconfigure(0, weight=1)
+        self.content_frame.grid_columnconfigure(0, weight=0)
+        self.content_frame.grid_columnconfigure(1, weight=1)
+
+        self.sidebar = tk.Frame(self.content_frame, bg=self.theme["app_bg"])
+        self.sidebar.grid(row=0, column=0, sticky="nsew", padx=(0, 18))
+        self.sidebar.grid_rowconfigure(0, weight=0)
+        self.sidebar.grid_rowconfigure(1, weight=0)
+        self.sidebar.grid_rowconfigure(2, weight=0)
+        self.sidebar.grid_columnconfigure(0, weight=1)
+
+        self.grid_area = tk.Frame(self.content_frame, bg=self.theme["app_bg"])
+        self.grid_area.grid(row=0, column=1, sticky="nsew")
+        self.grid_area.grid_rowconfigure(0, weight=1)
+        self.grid_area.grid_columnconfigure(0, weight=1)
+
+        self._build_recent_card()
+        self._build_gain_card()
+        self._build_control_card()
+        self._build_grid_card()
+
+    def _build_recent_card(self) -> None:
+        self.recent_card = self._create_card(self.sidebar)
+        self.recent_card.grid(row=0, column=0, sticky="ew", pady=(0, 18))
+
+        top = tk.Frame(self.recent_card, bg=self.theme["panel_bg"])
+        top.pack(fill="x", padx=18, pady=(18, 12))
+
+        self.recent_title_label = tk.Label(top, text="Derniers numeros", font=("Segoe UI", 18, "bold"))
+        self.recent_title_label.pack(side="left")
+
+        self.counter_badge = tk.Label(
+            top, textvariable=self.counter_var, font=("Segoe UI", 13, "bold"), padx=14, pady=8
         )
-        self.third_label.pack(pady=(0, 16))
+        self.counter_badge.pack(side="right")
 
-        self.controls_frame = tk.Frame(self.left_panel, bg=self.PANEL)
-        self.controls_frame.pack(fill="x", padx=16, pady=(8, 10))
-        for col in range(5):
-            self.controls_frame.columnconfigure(col, weight=0)
-        self.controls_frame.columnconfigure(1, weight=1)
-        self.controls_frame.columnconfigure(3, weight=2)
-        self.controls_frame.columnconfigure(4, weight=1)
-
-        self.manual_title_label = tk.Label(
-            self.controls_frame,
-            text="Numero",
-            fg=self.TEXT,
-            bg=self.PANEL,
-            font=("Segoe UI", 12, "bold"),
-        )
-        self.manual_title_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
-
-        self.entry_var = tk.StringVar()
-        self.entry = tk.Entry(
-            self.controls_frame,
-            textvariable=self.entry_var,
-            width=6,
-            font=("Segoe UI", 16, "bold"),
-            justify="center",
-            bd=0,
-            relief="flat",
-            bg="#e5e7eb",
-            fg="#111827",
-            insertbackground="#111827",
-        )
-        self.entry.grid(row=0, column=1, sticky="w", padx=(0, 10), ipady=6)
-
-        self.undo_button = self._create_button(
-            self.controls_frame, "Annuler", self.undo_last_action, "#94a3b8"
-        )
-        self.undo_button.grid(row=0, column=2, sticky="ew", padx=(0, 6))
-
-        self.random_button = self._create_button(
-            self.controls_frame, "Tirage aleatoire", self.start_random_animation, self.ACCENT
-        )
-        self.random_button.grid(row=0, column=3, sticky="ew", padx=(0, 6))
-
-        self.reset_button = self._create_button(self.controls_frame, "Reset", self.reset, self.DANGER)
-        self.reset_button.grid(row=0, column=4, sticky="ew")
-
-        gains_frame = tk.Frame(self.left_panel, bg=self.PANEL)
-        gains_frame.pack(fill="x", padx=16, pady=(8, 10))
-
-        btn_row = tk.Frame(gains_frame, bg=self.PANEL)
-        btn_row.pack(fill="x")
-
-        self.gain_buttons = [
-            self._create_button(btn_row, "Quine simple", lambda: self.set_gain("QUINE SIMPLE"), "#6366f1"),
-            self._create_button(btn_row, "Double quine", lambda: self.set_gain("DOUBLE QUINE"), "#8b5cf6"),
-            self._create_button(btn_row, "Carton plein", lambda: self.set_gain("CARTON PLEIN"), "#ec4899"),
+        self.ball_labels: list[tk.Label] = []
+        ball_specs = [
+            ("--", ("Segoe UI", 70, "bold")),
+            ("--", ("Segoe UI", 40, "bold")),
+            ("--", ("Segoe UI", 28, "bold")),
         ]
 
-        for i, button in enumerate(self.gain_buttons):
-            button.grid(row=0, column=i, padx=(0 if i == 0 else 6, 0), sticky="ew")
-            btn_row.columnconfigure(i, weight=1)
+        for text, font in ball_specs:
+            label = tk.Label(self.recent_card, text=text, font=font, pady=12)
+            label.pack(fill="x", padx=18, pady=(0, 12))
+            self.ball_labels.append(label)
 
-    def _build_right_panel(self) -> None:
-        self.right_panel.rowconfigure(0, weight=1)
-        self.right_panel.columnconfigure(0, weight=1)
+    def _build_gain_card(self) -> None:
+        self.gain_card = self._create_card(self.sidebar)
+        self.gain_card.grid(row=1, column=0, sticky="ew")
 
-        wrap = tk.Frame(self.right_panel, bg=self.PANEL_ALT)
-        wrap.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
-        wrap.rowconfigure(2, weight=1)
-        wrap.columnconfigure(0, weight=1)
+        top = tk.Frame(self.gain_card, bg=self.theme["panel_bg"])
+        top.pack(fill="x", padx=18, pady=(18, 8))
 
-        self.grid_gain_label = tk.Label(
-            wrap,
-            text="",
-            fg=self.ACCENT,
-            bg=self.PANEL_ALT,
-            font=("Segoe UI Black", 28),
+        self.gain_title_label = tk.Label(top, text="Annonce de partie", font=("Segoe UI", 16, "bold"))
+        self.gain_title_label.pack(side="left")
+
+        self.gain_tag_label = self._create_tag(top, "Choix rapide")
+        self.gain_tag_label.pack(side="right")
+
+        self.gain_button_row = tk.Frame(self.gain_card, bg=self.theme["panel_bg"])
+        self.gain_button_row.pack(fill="x", padx=18, pady=(0, 18))
+        for index in range(3):
+            self.gain_button_row.grid_columnconfigure(index, weight=1)
+
+        self.gain_buttons = [
+            self._create_button(
+                self.gain_button_row,
+                "Quine simple",
+                lambda: self.set_gain("Quine simple"),
+                self.theme["gain_quine"],
+                "#ffffff",
+            ),
+            self._create_button(
+                self.gain_button_row,
+                "Double quine",
+                lambda: self.set_gain("Double quine"),
+                self.theme["terracotta"],
+                "#ffffff",
+            ),
+            self._create_button(
+                self.gain_button_row,
+                "Carton plein",
+                lambda: self.set_gain("Carton plein"),
+                self.theme["deep_green"],
+                "#ffffff",
+            ),
+        ]
+
+        for index, button in enumerate(self.gain_buttons):
+            button.grid(row=0, column=index, sticky="ew", padx=(0 if index == 0 else 8, 0))
+
+    def _build_history_card(self) -> None:
+        self.history_card = tk.Frame(self.grid_card, bd=0, highlightthickness=0)
+        self.history_card.grid_columnconfigure(0, weight=1)
+
+        self.history_title_label = tk.Label(self.history_card, text="Historique", font=("Segoe UI", 12, "bold"))
+        self.history_title_label.grid(row=0, column=0, sticky="w")
+
+        self.history_numbers_label = tk.Label(
+            self.history_card,
+            text="Aucun numero tire pour le moment.",
+            font=("Consolas", 12),
+            anchor="w",
+            justify="left",
+            wraplength=760,
+            pady=2,
         )
-        self.grid_gain_label.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        self.history_numbers_label.grid(row=1, column=0, sticky="ew", pady=(2, 0))
 
-        history_wrap = tk.Frame(wrap, bg=self.PANEL_ALT)
-        history_wrap.grid(row=1, column=0, pady=(0, 12))
+    def _build_grid_card(self) -> None:
+        self.grid_card = self._create_card(self.grid_area)
+        self.grid_card.grid(row=0, column=0, sticky="nsew")
+        self.grid_card.grid_rowconfigure(3, weight=1)
+        self.grid_card.grid_columnconfigure(0, weight=1)
 
-        self.history_title_label = tk.Label(
-            history_wrap,
-            text="Historique des numeros tires",
-            fg=self.TEXT,
-            bg=self.PANEL_ALT,
-            font=("Segoe UI", 12, "bold"),
+        top = tk.Frame(self.grid_card, bg=self.theme["panel_bg"])
+        top.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 6))
+        top.grid_columnconfigure(0, weight=1)
+
+        left = tk.Frame(top, bg=self.theme["panel_bg"])
+        left.grid(row=0, column=0, sticky="w")
+
+        self.grid_title_label = tk.Label(left, text="Grille des numeros", font=("Segoe UI", 18, "bold"))
+        self.grid_title_label.pack(anchor="w")
+
+        self.animation_label = tk.Label(top, textvariable=self.animation_var, font=("Segoe UI", 34, "bold"))
+        self.animation_label.grid(row=0, column=1, sticky="e")
+
+        self.grid_gain_status_label = tk.Label(
+            self.grid_card,
+            textvariable=self.gain_var,
+            font=("Segoe UI", 22, "bold"),
+            anchor="center",
+            pady=8,
         )
-        self.history_title_label.pack(anchor="w", pady=(0, 8))
+        self.grid_gain_status_label.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 10))
 
-        self.history_text = tk.Text(
-            history_wrap,
-            height=3,
-            wrap="word",
-            bg="#0b1220",
-            fg=self.TEXT,
-            insertbackground=self.TEXT,
-            font=("Consolas", 13),
-            bd=0,
-            padx=10,
-            pady=10,
-            width=44,
-        )
-        self.history_text.pack()
-        self.history_text.configure(state="disabled")
+        self._build_history_card()
+        self.history_card.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 8))
 
-        self.grid_host = tk.Frame(wrap, bg=self.PANEL_ALT)
-        self.grid_host.grid(row=2, column=0, sticky="nsew")
-        self.grid_host.rowconfigure(0, weight=1)
-        self.grid_host.columnconfigure(0, weight=1)
+        self.grid_container = tk.Frame(self.grid_card, bg=self.theme["panel_bg"])
+        self.grid_container.grid(row=3, column=0, sticky="nsew", padx=18, pady=(0, 18))
 
-        self.grid_container = tk.Frame(self.grid_host, bg=self.PANEL_ALT)
-        self.grid_container.grid(row=0, column=0)
-
-        self.cell_labels: dict[int, tk.Label] = {}
         for row in range(9):
-            self.grid_container.rowconfigure(row, weight=1, uniform="numbers")
+            self.grid_container.grid_rowconfigure(row, weight=1, uniform="grid_rows")
         for col in range(10):
-            self.grid_container.columnconfigure(col, weight=1, uniform="numbers")
+            self.grid_container.grid_columnconfigure(col, weight=1, uniform="grid_cols")
 
         for number in range(1, 91):
             row = (number - 1) // 10
             col = (number - 1) % 10
-            lbl = tk.Label(
+            cell = tk.Label(
                 self.grid_container,
-                text=f"{number}",
-                bg="#111827",
-                fg=self.TEXT,
-                bd=1,
-                relief="solid",
+                text=str(number),
                 font=("Segoe UI", 16, "bold"),
-                width=4,
+                width=5,
                 height=2,
+                cursor="hand2",
+                bd=0,
+                relief="flat",
             )
-            lbl.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
-            self.cell_labels[number] = lbl
+            cell.grid(row=row, column=col, sticky="nsew", padx=4, pady=4)
+            cell.bind("<Button-1>", lambda _event, n=number: self.add_number(n))
+            self.grid_cells[number] = cell
 
-        self._apply_responsive_layout()
+    def _build_control_card(self) -> None:
+        self.control_card = self._create_card(self.sidebar)
+        self.control_card.grid(row=2, column=0, sticky="ew", pady=(18, 0))
+        self.control_card.grid_columnconfigure(0, weight=1)
 
-    def _create_button(self, parent: tk.Widget, text: str, command, color: str) -> tk.Button:
-        btn = tk.Button(
+        self.control_title_label = tk.Label(self.control_card, text="Commandes", font=("Segoe UI", 16, "bold"))
+        self.control_title_label.grid(row=0, column=0, sticky="w", padx=18, pady=(18, 6))
+
+        self.control_animation_label = tk.Label(
+            self.control_card,
+            textvariable=self.animation_var,
+            font=("Segoe UI", 24, "bold"),
+            anchor="center",
+            pady=4,
+        )
+        self.control_animation_label.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 10))
+
+        self.draw_panel = self._create_inner_panel(self.control_card)
+        self.draw_panel.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 10))
+
+        self.manual_panel = self._create_inner_panel(self.control_card)
+        self.manual_panel.grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 10))
+
+        self.reset_panel = self._create_inner_panel(self.control_card)
+        self.reset_panel.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 18))
+
+        self._fill_draw_panel()
+        self._fill_manual_panel()
+        self._fill_reset_panel()
+
+    def _fill_draw_panel(self) -> None:
+        self.draw_title_label = tk.Label(self.draw_panel, text="Tirage automatique", font=("Segoe UI", 15, "bold"))
+        self.draw_title_label.pack(anchor="w")
+
+        self.draw_hint_label = tk.Label(
+            self.draw_panel, text="Animation 34 s avec ralentissement progressif", font=("Segoe UI", 11)
+        )
+        self.draw_hint_label.pack(anchor="w", pady=(4, 10))
+
+        self.random_button = self._create_button(
+            self.draw_panel, "Lancer le tirage", self.start_random_animation, self.theme["deep_green"], "#ffffff"
+        )
+        self.random_button.pack(anchor="w")
+
+    def _fill_manual_panel(self) -> None:
+        self.manual_title_label = tk.Label(self.manual_panel, text="Ajout manuel", font=("Segoe UI", 15, "bold"))
+        self.manual_title_label.pack(anchor="w")
+
+        self.manual_hint_label = tk.Label(
+            self.manual_panel, text="Entrer un nombre entre 1 et 90", font=("Segoe UI", 11)
+        )
+        self.manual_hint_label.pack(anchor="w", pady=(4, 10))
+
+        controls = tk.Frame(self.manual_panel, bg=self.theme["soft_gold"])
+        controls.pack(anchor="w")
+        self.manual_controls_wrap = controls
+
+        self.entry = tk.Entry(
+            controls,
+            textvariable=self.manual_var,
+            bd=0,
+            relief="flat",
+            justify="center",
+            width=6,
+            font=("Segoe UI", 16, "bold"),
+            insertwidth=2,
+        )
+        self.entry.pack(side="left", ipady=8, padx=(0, 8))
+
+        self.add_button = self._create_button(controls, "Ajouter", self.add_from_field, self.theme["gold"], self.theme["ink"])
+        self.add_button.pack(side="left", padx=(0, 8))
+
+        self.undo_button = self._create_button(controls, "Annuler", self.undo_last_action, self.theme["undo_bg"], self.theme["ink"])
+        self.undo_button.pack(side="left")
+
+    def _fill_reset_panel(self) -> None:
+        self.reset_title_label = tk.Label(self.reset_panel, text="Nouvelle partie", font=("Segoe UI", 15, "bold"))
+        self.reset_title_label.pack(anchor="w")
+
+        self.reset_hint_label = tk.Label(
+            self.reset_panel, text="Efface la grille et remet la partie a zero", font=("Segoe UI", 11)
+        )
+        self.reset_hint_label.pack(anchor="w", pady=(4, 10))
+
+        self.reset_button = self._create_button(
+            self.reset_panel, "Reinitialiser", self.reset, self.theme["terracotta"], "#ffffff"
+        )
+        self.reset_button.pack(anchor="w")
+
+    def _bind_events(self) -> None:
+        self.root.bind("<Return>", lambda _event: self.add_from_field() if not self.editing_title else None)
+        self.root.bind("<Configure>", self._on_root_resize)
+
+    def _create_card(self, parent: tk.Widget) -> tk.Frame:
+        return tk.Frame(parent, bd=0, highlightthickness=1)
+
+    def _create_inner_panel(self, parent: tk.Widget) -> tk.Frame:
+        return tk.Frame(parent, bd=0, highlightthickness=1, padx=16, pady=14)
+
+    def _create_tag(self, parent: tk.Widget, text: str) -> tk.Label:
+        return tk.Label(parent, text=text, font=("Segoe UI", 11, "bold"), padx=10, pady=6)
+
+    def _create_button(
+        self, parent: tk.Widget, text: str, command, color: str, text_color: str
+    ) -> tk.Button:
+        button = tk.Button(
             parent,
             text=text,
             command=command,
             bg=color,
-            fg="#111827",
-            activebackground=self._shade(color, -0.15),
-            activeforeground="#ffffff",
-            font=("Segoe UI", 11, "bold"),
-            relief="flat",
+            fg=text_color,
+            activebackground=self._shade(color, -0.10),
+            activeforeground=text_color,
             bd=0,
-            padx=12,
+            relief="flat",
+            font=("Segoe UI", 12, "bold"),
+            padx=16,
             pady=10,
             cursor="hand2",
         )
+        button.bind("<Enter>", lambda _event: button.configure(bg=self._shade(color, 0.06)))
+        button.bind("<Leave>", lambda _event, base=color: button.configure(bg=base))
+        return button
 
-        def on_enter(_event):
-            if btn["state"] == "normal":
-                btn.configure(bg=self._shade(color, 0.08))
+    def toggle_theme(self) -> None:
+        self.is_dark_mode.set(not self.is_dark_mode.get())
+        self.theme = self.DARK_THEME.copy() if self.is_dark_mode.get() else self.LIGHT_THEME.copy()
+        self._apply_theme()
 
-        def on_leave(_event):
-            btn.configure(bg=color)
+    def begin_title_edit(self) -> None:
+        if self.editing_title or self.animation_running:
+            return
+        self.editing_title = True
+        self.header_title_label.pack_forget()
+        self.title_entry.pack(anchor="w")
+        self.title_entry.focus_set()
+        self.title_entry.selection_range(0, "end")
 
-        btn.bind("<Enter>", on_enter)
-        btn.bind("<Leave>", on_leave)
-        return btn
+    def finish_title_edit(self) -> None:
+        if not self.editing_title:
+            self._apply_window_title()
+            return
+        text = self.title_var.get().strip()
+        self.title_var.set(text or "Loto Francais")
+        self.title_entry.pack_forget()
+        self.header_title_label.pack(anchor="w")
+        self.editing_title = False
+        self._apply_window_title()
 
-    def _on_enter(self, _event) -> None:
-        if not self.animation_running:
-            self._add_from_entry()
+    def cancel_title_edit(self) -> None:
+        if not self.editing_title:
+            return
+        if not self.title_var.get().strip():
+            self.title_var.set("Loto Francais")
+        self.title_entry.pack_forget()
+        self.header_title_label.pack(anchor="w")
+        self.editing_title = False
+        self._apply_window_title()
 
-    def _add_from_entry(self) -> None:
-        raw = self.entry_var.get().strip()
+    def _apply_window_title(self) -> None:
+        self.root.title(self.title_var.get().strip() or "Loto Francais")
+
+    def add_from_field(self) -> None:
+        raw = self.manual_var.get().strip()
         if not raw:
             return
         if not raw.isdigit():
-            self.entry_var.set("")
-            messagebox.showwarning("Saisie invalide", "Veuillez saisir un nombre entier entre 1 et 90.")
+            self.manual_var.set("")
+            messagebox.showwarning("Saisie invalide", "Entrez un nombre entre 1 et 90.")
             return
-        self.add_number(int(raw), source="manual")
+        if self.add_number(int(raw)):
+            self.manual_var.set("")
 
-    def add_number(self, number: int, source: str = "manual") -> bool:
+    def add_number(self, number: int) -> bool:
+        if self.animation_running:
+            messagebox.showinfo("Tirage en cours", "Attendez la fin du tirage en cours.")
+            return False
         if number < 1 or number > 90:
-            self.entry_var.set("")
-            messagebox.showwarning("Hors limite", "Le numero doit etre compris entre 1 et 90.")
+            messagebox.showwarning("Nombre invalide", "Le numero doit etre compris entre 1 et 90.")
             return False
         if number in self.drawn_numbers:
-            self.entry_var.set("")
-            messagebox.showwarning("Doublon", f"Le numero {number} a deja ete tire.")
+            self._flash_existing_number(number)
+            messagebox.showwarning("Doublon", "Ce numero a deja ete tire.")
             return False
 
         self._push_undo_state()
         self.drawn_numbers.append(number)
-        self.draw_history.append((number, source))
-        self.entry_var.set("")
-        self._refresh_recent_labels()
-        self._refresh_history()
-        self._mark_number(number)
-        self._pulse_last_number()
+        self.last_clicked_number = number
+        self._refresh_view()
+        self._flash_new_number(number)
+        self._pulse_last_ball()
 
         if len(self.drawn_numbers) == 90:
-            messagebox.showinfo("Termine", "Tous les numeros ont ete tires.")
+            messagebox.showinfo("Partie terminee", "Tous les numeros ont ete tires.")
         return True
 
-    def start_random_animation(self) -> None:
-        if self.animation_running:
-            return
-
-        remaining = [n for n in range(1, 91) if n not in self.drawn_numbers]
-        if not remaining:
-            messagebox.showinfo("Termine", "Il ne reste plus de numero a tirer.")
-            return
-
-        self.animation_running = True
-        self._set_controls_state("disabled")
-        final_number = random.choice(remaining)
-
-        self._animate_roll(
-            elapsed=0,
-            duration=3500,
-            final_number=final_number,
-            min_delay=40,
-            max_delay=320,
-        )
-
-    def _animate_roll(
-        self, elapsed: int, duration: int, final_number: int, min_delay: int, max_delay: int
-    ) -> None:
-        progress = min(elapsed / duration, 1)
-        if progress >= 1:
-            self.rolling_label.configure(text="")
-            self.add_number(final_number, source="random")
-            self.animation_running = False
-            self._set_controls_state("normal")
-            return
-
-        remaining = [n for n in range(1, 91) if n not in self.drawn_numbers]
-        rolling_number = random.choice(remaining)
-        self.rolling_label.configure(text=f"EN COURS : {rolling_number:02d}")
-
-        delay = int(min_delay + (max_delay - min_delay) * (progress ** 2))
-        self.root.after(
-            delay,
-            lambda: self._animate_roll(
-                elapsed + delay,
-                duration,
-                final_number,
-                min_delay,
-                max_delay,
-            ),
-        )
-
-    def set_gain(self, gain_name: str) -> None:
-        self.current_gain.set(gain_name)
-        self._update_header_display()
+    def set_gain(self, gain: str) -> None:
+        self.current_gain = gain
+        self.gain_var.set(gain)
 
     def undo_last_action(self) -> None:
         if self.animation_running:
             return
-
         if not self.undo_stack:
             messagebox.showinfo("Annulation", "Aucune action a annuler.")
             return
 
         state = self.undo_stack.pop()
-        self._restore_state(state)
+        self.drawn_numbers = list(state["drawn_numbers"])
+        self.current_gain = str(state["current_gain"])
+        self.gain_var.set(self.current_gain or "Aucune annonce")
+        self.animation_var.set("--")
+        self.manual_var.set("")
+        self.last_clicked_number = self.drawn_numbers[-1] if self.drawn_numbers else None
+        self._refresh_view()
 
     def reset(self) -> None:
         if self.animation_running:
             return
-
         self._push_undo_state()
         self.drawn_numbers.clear()
-        self.draw_history.clear()
-        self.entry_var.set("")
-        self.current_gain.set("")
-        self.rolling_label.configure(text="")
-        self._refresh_recent_labels()
-        self._refresh_history()
-        self._update_header_display()
+        self.current_gain = ""
+        self.gain_var.set("Aucune annonce")
+        self.animation_var.set("--")
+        self.manual_var.set("")
+        self.last_clicked_number = None
+        self._refresh_view()
 
-        for label in self.cell_labels.values():
-            label.configure(bg="#111827", fg=self.TEXT)
-
-    def _refresh_recent_labels(self) -> None:
-        values = self.drawn_numbers[-3:]
-        formatted = [f"{n:02d}" for n in values]
-        self.last_label.configure(text=formatted[-1] if len(formatted) >= 1 else "--", fg=self.ACCENT)
-        self.second_label.configure(text=formatted[-2] if len(formatted) >= 2 else "--")
-        self.third_label.configure(text=formatted[-3] if len(formatted) >= 3 else "--")
-
-    def _update_header_display(self) -> None:
-        gain = self.current_gain.get().strip()
-        if gain:
-            self.grid_gain_label.configure(text=gain)
-        else:
-            self.grid_gain_label.configure(text="")
-
-    def _refresh_history(self) -> None:
-        self.history_text.configure(state="normal")
-        self.history_text.delete("1.0", "end")
-
-        if not self.drawn_numbers:
-            self.history_text.insert("end", "Aucun numero tire pour le moment.")
-        else:
-            numbers = " - ".join(f"{n:02d}" for n in self.drawn_numbers)
-            self.history_text.insert("end", numbers)
-
-        self.history_text.configure(state="disabled")
-
-    def _mark_number(self, number: int) -> None:
-        lbl = self.cell_labels[number]
-        lbl.configure(bg=self.SUCCESS, fg="#052e16")
-        self._flash_cell(lbl, count=4)
-
-    def _push_undo_state(self) -> None:
-        snapshot = {
-            "drawn_numbers": self.drawn_numbers.copy(),
-            "draw_history": self.draw_history.copy(),
-            "current_gain": self.current_gain.get(),
-        }
-        self.undo_stack.append(snapshot)
-
-    def _restore_state(self, state: dict[str, object]) -> None:
-        self.drawn_numbers = list(state["drawn_numbers"])
-        self.draw_history = list(state["draw_history"])
-        self.current_gain.set(str(state["current_gain"]))
-        self.entry_var.set("")
-        self.rolling_label.configure(text="")
-        self._rebuild_grid()
-        self._refresh_recent_labels()
-        self._refresh_history()
-        self._update_header_display()
-
-    def _rebuild_grid(self) -> None:
-        for label in self.cell_labels.values():
-            label.configure(bg="#111827", fg=self.TEXT)
-        for number in self.drawn_numbers:
-            self.cell_labels[number].configure(bg=self.SUCCESS, fg="#052e16")
-
-    def _flash_cell(self, label: tk.Label, count: int) -> None:
-        if count <= 0:
-            label.configure(bg=self.SUCCESS, fg="#052e16")
+    def start_random_animation(self) -> None:
+        if self.animation_running:
             return
 
-        current_bg = label.cget("bg")
-        next_bg = "#86efac" if current_bg == self.SUCCESS else self.SUCCESS
-        label.configure(bg=next_bg)
-        self.root.after(120, lambda: self._flash_cell(label, count - 1))
+        remaining = self._remaining_numbers()
+        if not remaining:
+            messagebox.showinfo("Partie terminee", "Il ne reste plus de numero a tirer.")
+            return
 
-    def _pulse_last_number(self) -> None:
-        pulse_colors = [self.ACCENT, "#fbbf24", "#fde68a", "#fbbf24", self.ACCENT]
+        self.animation_running = True
+        self._set_controls_state("disabled")
+        final_number = random.choice(remaining)
+        self._animate_roll(0, 34000, final_number)
 
-        def step(i: int) -> None:
-            if i >= len(pulse_colors):
-                self.last_label.configure(fg=self.ACCENT)
+    def _animate_roll(self, elapsed: int, total_duration: int, final_number: int) -> None:
+        progress = min(elapsed / total_duration, 1)
+
+        if progress >= 1:
+            self._push_undo_state()
+            self.drawn_numbers.append(final_number)
+            self.last_clicked_number = final_number
+            self.animation_var.set(f"{final_number:02d}")
+            self.animation_label.configure(fg=self.theme["deep_green"])
+            self._refresh_view(skip_animation_text=True)
+            self._flash_new_number(final_number)
+            self.root.after(850, self._finish_animation)
+            return
+
+        remaining = self._remaining_numbers()
+        if not remaining:
+            self._finish_animation()
+            return
+
+        display = random.choice(remaining)
+        self.animation_var.set(f"{display:02d}")
+        self.animation_label.configure(fg=self.theme["gold"])
+
+        min_delay = 30
+        max_delay = 170
+        delay = int(min_delay + (max_delay - min_delay) * (progress ** 2))
+        self.root.after(delay, lambda: self._animate_roll(elapsed + delay, total_duration, final_number))
+
+    def _finish_animation(self) -> None:
+        self.animation_running = False
+        self.animation_var.set("--")
+        self.animation_label.configure(fg=self.theme["gold"])
+        self._set_controls_state("normal")
+        self._pulse_last_ball()
+
+    def _push_undo_state(self) -> None:
+        self.undo_stack.append(
+            {
+                "drawn_numbers": self.drawn_numbers.copy(),
+                "current_gain": self.current_gain,
+            }
+        )
+
+    def _refresh_view(self, skip_animation_text: bool = False) -> None:
+        self._apply_window_title()
+        self._refresh_counter()
+        self._refresh_recent_numbers()
+        self._refresh_history()
+        self._refresh_grid()
+        if not skip_animation_text and not self.animation_running:
+            self.animation_var.set("--")
+            self.animation_label.configure(fg=self.theme["gold"])
+        if not self.current_gain:
+            self.gain_var.set("Aucune annonce")
+
+    def _refresh_counter(self) -> None:
+        self.counter_var.set(f"{len(self.drawn_numbers)} / 90")
+
+    def _refresh_recent_numbers(self) -> None:
+        recent = list(reversed(self.drawn_numbers[-3:]))
+        for index, label in enumerate(self.ball_labels):
+            if index < len(recent):
+                label.configure(text=f"{recent[index]:02d}")
+            else:
+                label.configure(text="--")
+
+    def _refresh_history(self) -> None:
+        if not self.drawn_numbers:
+            self.history_numbers_label.configure(text="Aucun numero tire pour le moment.")
+        else:
+            chunks = []
+            for index, number in enumerate(self.drawn_numbers):
+                separator = "   " if index else ""
+                chunks.append(f"{separator}{number:02d}")
+            self.history_numbers_label.configure(text="".join(chunks))
+
+    def _refresh_grid(self) -> None:
+        for number, cell in self.grid_cells.items():
+            if number in self.drawn_numbers:
+                bg = self.theme["grid_drawn"]
+                fg = self.theme["grid_drawn_text"]
+            else:
+                bg = self.theme["grid_idle"]
+                fg = self.theme["ink"]
+            cell.configure(bg=bg, fg=fg)
+
+    def _flash_new_number(self, number: int) -> None:
+        cell = self.grid_cells[number]
+        base_bg = self.theme["grid_drawn"]
+        highlight_bg = self._shade(base_bg, 0.15)
+        self._pulse_cell(cell, base_bg, highlight_bg, 4)
+
+    def _flash_existing_number(self, number: int) -> None:
+        cell = self.grid_cells[number]
+        base_bg = self.theme["grid_drawn"] if number in self.drawn_numbers else self.theme["grid_idle"]
+        highlight_bg = self.theme["terracotta"]
+        self._pulse_cell(cell, base_bg, highlight_bg, 3)
+
+    def _pulse_cell(self, cell: tk.Label, base_bg: str, flash_bg: str, repeats: int) -> None:
+        def step(index: int) -> None:
+            if index >= repeats * 2:
+                number = int(cell.cget("text"))
+                fg = self.theme["grid_drawn_text"] if number in self.drawn_numbers else self.theme["ink"]
+                cell.configure(bg=base_bg, fg=fg)
                 return
-            self.last_label.configure(fg=pulse_colors[i])
-            self.root.after(70, lambda: step(i + 1))
+            is_flash = index % 2 == 0
+            fg = "#ffffff" if is_flash and flash_bg == self.theme["terracotta"] else self.theme["grid_drawn_text"]
+            cell.configure(bg=flash_bg if is_flash else base_bg, fg=fg)
+            self.root.after(90, lambda: step(index + 1))
 
         step(0)
 
+    def _pulse_last_ball(self) -> None:
+        if not self.drawn_numbers:
+            return
+
+        colors = [self.theme["gold"], self._shade(self.theme["gold"], 0.18), "#f7d889", self._shade(self.theme["gold"], 0.18), self.theme["gold"]]
+        final_fg = self.theme["deep_green"]
+
+        def step(index: int) -> None:
+            if index >= len(colors):
+                self.ball_labels[0].configure(fg=final_fg)
+                return
+            self.ball_labels[0].configure(fg=colors[index])
+            self.root.after(75, lambda: step(index + 1))
+
+        step(0)
+
+    def _remaining_numbers(self) -> list[int]:
+        return [number for number in range(1, 91) if number not in self.drawn_numbers]
+
     def _set_controls_state(self, state: str) -> None:
         self.entry.configure(state=state)
+        self.add_button.configure(state=state)
         self.undo_button.configure(state=state)
         self.random_button.configure(state=state)
         self.reset_button.configure(state=state)
+        self.title_entry.configure(state=state)
+        self.theme_toggle_button.configure(state=state)
         for button in self.gain_buttons:
             button.configure(state=state)
 
     def _on_root_resize(self, event) -> None:
-        if event.widget is self.root:
-            self._apply_responsive_layout()
+        if event.widget is not self.root:
+            return
+        self._apply_responsive_layout(max(self.root.winfo_width(), 1120), max(self.root.winfo_height(), 760))
 
-    def _apply_responsive_layout(self) -> None:
-        width = max(self.root.winfo_width(), 860)
-        height = max(self.root.winfo_height(), 620)
-        compact = width < 1180
-
+    def _apply_responsive_layout(self, width: int, height: int) -> None:
+        compact = width < 1280
         if compact != self.compact_layout:
             self.compact_layout = compact
+            self.sidebar.grid_forget()
+            self.grid_area.grid_forget()
             if compact:
-                self.main.columnconfigure(0, weight=1)
-                self.main.columnconfigure(1, weight=0)
-                self.main.rowconfigure(0, weight=0)
-                self.main.rowconfigure(1, weight=1)
-                self.left_panel.grid_configure(row=0, column=0, padx=0, pady=(0, 12), sticky="nsew")
-                self.right_panel.grid_configure(row=1, column=0, padx=0, pady=0, sticky="nsew")
+                self.content_frame.grid_columnconfigure(0, weight=1)
+                self.content_frame.grid_columnconfigure(1, weight=0)
+                self.content_frame.grid_rowconfigure(0, weight=1)
+                self.content_frame.grid_rowconfigure(1, weight=1)
+                self.sidebar.grid(row=0, column=0, sticky="nsew", padx=0, pady=(0, 18))
+                self.grid_area.grid(row=1, column=0, sticky="nsew")
             else:
-                self.main.columnconfigure(0, weight=2)
-                self.main.columnconfigure(1, weight=3)
-                self.main.rowconfigure(0, weight=1)
-                self.main.rowconfigure(1, weight=0)
-                self.left_panel.grid_configure(row=0, column=0, padx=(0, 12), pady=0, sticky="nsew")
-                self.right_panel.grid_configure(row=0, column=1, padx=(12, 0), pady=0, sticky="nsew")
+                self.content_frame.grid_rowconfigure(0, weight=1)
+                self.content_frame.grid_rowconfigure(1, weight=0)
+                self.content_frame.grid_columnconfigure(0, weight=0)
+                self.content_frame.grid_columnconfigure(1, weight=1)
+                self.sidebar.grid(row=0, column=0, sticky="nsew", padx=(0, 18), pady=0)
+                self.grid_area.grid(row=0, column=1, sticky="nsew")
 
-        scale = min(width / 1366, height / 820)
-        scale = max(0.72, min(scale, 1.18))
+        scale = min(width / 1420, height / 920)
+        scale = max(0.78, min(scale, 1.10))
 
-        self.title_entry.configure(font=("Segoe UI", max(18, int(26 * scale)), "bold"))
-        self.grid_gain_label.configure(font=("Segoe UI Black", max(20, int(28 * scale))))
-        self.rolling_label.configure(font=("Segoe UI Black", max(20, int(34 * scale))))
-        self.last_label.configure(font=("Segoe UI Black", max(68, int(120 * scale))))
-        self.second_label.configure(font=("Segoe UI", max(28, int(52 * scale)), "bold"))
-        self.third_label.configure(font=("Segoe UI", max(18, int(34 * scale))))
-        self.manual_title_label.configure(font=("Segoe UI", max(10, int(12 * scale)), "bold"))
-        self.history_title_label.configure(font=("Segoe UI", max(10, int(12 * scale)), "bold"))
-        self.entry.configure(font=("Segoe UI", max(12, int(16 * scale)), "bold"), width=6)
-        self.history_text.configure(
-            font=("Consolas", max(10, int(13 * scale))),
-            width=max(30, int(44 * scale)),
-            height=max(2, int(3 * scale)),
+        self.header_title_label.configure(font=("Segoe UI", max(20, int(26 * scale)), "bold"))
+        self.title_entry.configure(font=("Segoe UI", max(19, int(25 * scale)), "bold"), width=max(16, int(24 * scale)))
+        self.header_subtitle_label.configure(font=("Segoe UI", max(11, int(13 * scale))))
+        self.title_hint_label.configure(font=("Segoe UI", max(9, int(11 * scale))))
+
+        self.recent_title_label.configure(font=("Segoe UI", max(14, int(18 * scale)), "bold"))
+        self.counter_badge.configure(font=("Segoe UI", max(10, int(13 * scale)), "bold"))
+        self.gain_title_label.configure(font=("Segoe UI", max(13, int(16 * scale)), "bold"))
+        self.history_title_label.configure(font=("Segoe UI", max(11, int(12 * scale)), "bold"))
+        self.history_numbers_label.configure(
+            font=("Consolas", max(10, int(12 * scale))),
+            wraplength=max(460, int((width - 520) * 0.9)),
+        )
+        self.grid_title_label.configure(font=("Segoe UI", max(14, int(18 * scale)), "bold"))
+        self.grid_gain_status_label.configure(font=("Segoe UI", max(16, int(22 * scale)), "bold"))
+        self.animation_label.configure(font=("Segoe UI", max(24, int(34 * scale)), "bold"))
+        self.control_animation_label.configure(font=("Segoe UI", max(18, int(24 * scale)), "bold"))
+
+        ball_fonts = [
+            ("Segoe UI", max(48, int(70 * scale)), "bold"),
+            ("Segoe UI", max(28, int(40 * scale)), "bold"),
+            ("Segoe UI", max(20, int(28 * scale)), "bold"),
+        ]
+        for label, font in zip(self.ball_labels, ball_fonts):
+            label.configure(font=font)
+
+        self.entry.configure(font=("Segoe UI", max(12, int(16 * scale)), "bold"), width=max(5, int(6 * scale)))
+
+        button_font = ("Segoe UI", max(10, int(12 * scale)), "bold")
+        for button in [self.theme_toggle_button, self.random_button, self.add_button, self.undo_button, self.reset_button]:
+            button.configure(font=button_font)
+        for button in self.gain_buttons:
+            button.configure(font=("Segoe UI", max(9, int(11 * scale)), "bold"))
+
+        cell_font = max(11, int(16 * scale))
+        cell_width = max(4, int(5 * scale))
+        cell_height = max(1, int(2 * scale))
+        pad = max(2, int(4 * scale))
+        for cell in self.grid_cells.values():
+            cell.configure(font=("Segoe UI", cell_font, "bold"), width=cell_width, height=cell_height)
+            cell.grid_configure(padx=pad, pady=pad)
+
+    def _apply_theme(self) -> None:
+        self.root.configure(bg=self.theme["app_bg"])
+        self.root_frame.configure(bg=self.theme["app_bg"])
+        self.content_frame.configure(bg=self.theme["app_bg"])
+
+        for card in [self.header_card, self.recent_card, self.gain_card, self.control_card, self.grid_card]:
+            card.configure(
+                bg=self.theme["panel_bg"],
+                highlightbackground=self.theme["panel_alt"],
+                highlightcolor=self.theme["panel_alt"],
+            )
+
+        for frame in [self.header_left, self.header_right, self.header_title_wrap]:
+            frame.configure(bg=self.theme["panel_bg"])
+
+        for frame in [self.sidebar, self.grid_area]:
+            frame.configure(bg=self.theme["app_bg"])
+
+        self.header_title_label.configure(bg=self.theme["panel_bg"], fg=self.theme["deep_green"])
+        self.title_entry.configure(
+            bg=self.theme["input_bg"],
+            fg=self.theme["ink"],
+            insertbackground=self.theme["ink"],
+        )
+        self.header_subtitle_label.configure(bg=self.theme["panel_bg"], fg=self.theme["muted"])
+        self.title_hint_label.configure(bg=self.theme["panel_bg"], fg=self.theme["muted"])
+
+        self.theme_toggle_button.configure(
+            text="Mode clair" if self.is_dark_mode.get() else "Mode sombre",
+            bg=self.theme["toggle_bg"],
+            fg=self.theme["toggle_fg"],
+            activebackground=self._shade(self.theme["toggle_bg"], -0.10),
+            activeforeground=self.theme["toggle_fg"],
         )
 
-        button_font = ("Segoe UI", max(9, int(11 * scale)), "bold")
-        self.undo_button.configure(font=button_font)
-        self.random_button.configure(font=button_font)
-        self.reset_button.configure(font=button_font)
-        for button in self.gain_buttons:
-            button.configure(font=button_font)
+        self.counter_badge.configure(bg=self.theme["soft_green"], fg=self.theme["deep_green"])
 
-        cell_font_size = max(10, int(16 * scale))
-        cell_width = max(3, int(4 * scale))
-        cell_height = max(1, int(2 * scale))
-        cell_pad = max(2, int(4 * scale))
-        for label in self.cell_labels.values():
-            label.configure(
-                font=("Segoe UI", cell_font_size, "bold"),
-                width=cell_width,
-                height=cell_height,
+        ball_backgrounds = [self.theme["soft_green"], self.theme["soft_terracotta"], self.theme["soft_gold"]]
+        ball_foregrounds = [self.theme["deep_green"], self.theme["terracotta"], self.theme["gold"]]
+        for index, label in enumerate(self.ball_labels):
+            label.configure(bg=ball_backgrounds[index], fg=ball_foregrounds[index])
+
+        for label in [
+            self.recent_title_label,
+            self.gain_title_label,
+            self.history_title_label,
+            self.grid_title_label,
+            self.control_title_label,
+            self.draw_title_label,
+            self.manual_title_label,
+            self.reset_title_label,
+        ]:
+            label.configure(bg=self.theme["panel_bg"] if label in [self.recent_title_label, self.gain_title_label, self.history_title_label, self.grid_title_label] else label.master.cget("bg"), fg=self.theme["ink"])
+
+        for label in [self.draw_hint_label, self.manual_hint_label, self.reset_hint_label]:
+            label.configure(bg=label.master.cget("bg"), fg=self.theme["muted"])
+        self.grid_gain_status_label.configure(bg=self.theme["panel_alt"], fg=self.theme["gold"])
+        self.animation_label.configure(bg=self.theme["panel_bg"], fg=self.theme["gold"])
+        self.control_animation_label.configure(bg=self.theme["soft_blue"], fg=self.theme["gold"])
+
+        self.gain_button_row.configure(bg=self.theme["panel_bg"])
+        self.history_card.configure(bg=self.theme["panel_bg"])
+        self.history_title_label.configure(bg=self.theme["panel_bg"], fg=self.theme["muted"])
+        self.history_numbers_label.configure(bg=self.theme["panel_bg"], fg=self.theme["ink"])
+
+        self.grid_container.configure(bg=self.theme["panel_bg"])
+        self._refresh_grid()
+
+        self.control_card.configure(
+            bg=self.theme["panel_bg"],
+            highlightbackground=self.theme["panel_alt"],
+            highlightcolor=self.theme["panel_alt"],
+        )
+        self.draw_panel.configure(
+            bg=self.theme["soft_green"],
+            highlightbackground=self._shade(self.theme["soft_green"], -0.15),
+            highlightcolor=self._shade(self.theme["soft_green"], -0.15),
+        )
+        self.manual_panel.configure(
+            bg=self.theme["soft_gold"],
+            highlightbackground=self._shade(self.theme["soft_gold"], -0.18),
+            highlightcolor=self._shade(self.theme["soft_gold"], -0.18),
+        )
+        self.reset_panel.configure(
+            bg=self.theme["soft_terracotta"],
+            highlightbackground=self._shade(self.theme["soft_terracotta"], -0.18),
+            highlightcolor=self._shade(self.theme["soft_terracotta"], -0.18),
+        )
+        self.manual_controls_wrap.configure(bg=self.theme["soft_gold"])
+
+        self.entry.configure(bg=self.theme["input_bg"], fg=self.theme["ink"], insertbackground=self.theme["ink"])
+
+        self.random_button.configure(
+            bg=self.theme["deep_green"],
+            fg="#ffffff",
+            activebackground=self._shade(self.theme["deep_green"], -0.10),
+            activeforeground="#ffffff",
+        )
+        self.add_button.configure(
+            bg=self.theme["gold"],
+            fg=self.theme["grid_drawn_text"] if self.is_dark_mode.get() else self.theme["ink"],
+            activebackground=self._shade(self.theme["gold"], -0.10),
+            activeforeground=self.theme["grid_drawn_text"] if self.is_dark_mode.get() else self.theme["ink"],
+        )
+        self.undo_button.configure(
+            bg=self.theme["undo_bg"],
+            fg=self.theme["ink"],
+            activebackground=self._shade(self.theme["undo_bg"], -0.10),
+            activeforeground=self.theme["ink"],
+        )
+        self.reset_button.configure(
+            bg=self.theme["terracotta"],
+            fg="#ffffff",
+            activebackground=self._shade(self.theme["terracotta"], -0.10),
+            activeforeground="#ffffff",
+        )
+
+        gain_colors = [self.theme["gain_quine"], self.theme["terracotta"], self.theme["deep_green"]]
+        for button, color in zip(self.gain_buttons, gain_colors):
+            button.configure(
+                bg=color,
+                fg="#ffffff",
+                activebackground=self._shade(color, -0.10),
+                activeforeground="#ffffff",
             )
-            label.grid_configure(padx=cell_pad, pady=cell_pad)
 
-    def _draw_gradient(self, event) -> None:
-        self.bg_canvas.delete("grad")
-        width = max(event.width, 1)
-        height = max(event.height, 1)
+        self.gain_tag_label.configure(bg=self.theme["panel_alt"], fg=self.theme["muted"])
 
-        r1, g1, b1 = self._hex_to_rgb(self.BG_START)
-        r2, g2, b2 = self._hex_to_rgb(self.BG_END)
+        top_frames = [
+            child for child in [self.recent_card.winfo_children()[0], self.gain_card.winfo_children()[0], self.grid_card.winfo_children()[0]]
+        ]
+        for frame in top_frames:
+            frame.configure(bg=self.theme["panel_bg"])
+            for child in frame.winfo_children():
+                if isinstance(child, tk.Frame):
+                    child.configure(bg=self.theme["panel_bg"])
 
-        for i in range(height):
-            ratio = i / height
-            nr = int(r1 + (r2 - r1) * ratio)
-            ng = int(g1 + (g2 - g1) * ratio)
-            nb = int(b1 + (b2 - b1) * ratio)
-            color = f"#{nr:02x}{ng:02x}{nb:02x}"
-            self.bg_canvas.create_line(0, i, width, i, tags=("grad",), fill=color)
-
-        self.bg_canvas.lower("all")
+        self._refresh_view()
 
     @staticmethod
-    def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
-        hex_color = hex_color.lstrip("#")
-        return int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+        value = value.lstrip("#")
+        return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
 
     @staticmethod
-    def _shade(hex_color: str, amount: float) -> str:
-        r, g, b = LottoApp._hex_to_rgb(hex_color)
+    def _shade(color: str, amount: float) -> str:
+        r, g, b = LottoApp._hex_to_rgb(color)
         if amount >= 0:
             r = min(255, int(r + (255 - r) * amount))
             g = min(255, int(g + (255 - g) * amount))
