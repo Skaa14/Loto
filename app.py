@@ -3,8 +3,8 @@ import tkinter as tk
 from tkinter import messagebox
 
 
-class LottoApp:
-    """Application desktop de loto francais (1 a 90)."""
+class LotoApp:
+    """Application desktop de loto français (1 a 90)."""
 
     LIGHT_THEME = {
         "app_bg": "#f4efe5",
@@ -56,7 +56,7 @@ class LottoApp:
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Loto Francais")
+        self.root.title("Loto Français")
         self.root.geometry("1420x920")
         self.root.minsize(1120, 760)
 
@@ -70,7 +70,7 @@ class LottoApp:
         self.grid_cells: dict[int, tk.Label] = {}
 
         self.is_dark_mode = tk.BooleanVar(value=True)
-        self.title_var = tk.StringVar(value="Loto Francais")
+        self.title_var = tk.StringVar(value="Loto Français")
         self.manual_var = tk.StringVar()
         self.counter_var = tk.StringVar(value="0 / 90")
         self.animation_var = tk.StringVar(value="--")
@@ -79,20 +79,35 @@ class LottoApp:
         self.theme = self.DARK_THEME.copy()
         self.root.configure(bg=self.theme["app_bg"])
 
+        # Conteneur principal fixe
         self.root_frame = tk.Frame(self.root, bg=self.theme["app_bg"])
-        self.root_frame.pack(fill="both", expand=True, padx=18, pady=18)
+        self.root_frame.pack(fill="both", expand=True)
 
         self.header_card = self._create_card(self.root_frame)
-        self.header_card.pack(fill="x", pady=(0, 18))
+        self.header_card.pack(fill="x", pady=18, padx=18)
 
         self.content_frame = tk.Frame(self.root_frame, bg=self.theme["app_bg"])
-        self.content_frame.pack(fill="both", expand=True)
+        self.content_frame.pack(fill="both", expand=True, padx=18, pady=(0, 18))
 
         self._build_header()
         self._build_content()
         self._bind_events()
         self._refresh_view()
         self._apply_theme()
+
+    def _bind_mouse_wheel(self, widget) -> None:
+        """Active le scroll avec la molette sur tous les widgets."""
+        widget.bind_all("<MouseWheel>", self._on_mousewheel)
+        widget.bind_all("<Button-4>", self._on_mousewheel)
+        widget.bind_all("<Button-5>", self._on_mousewheel)
+
+    def _on_sidebar_resize(self, event) -> None:
+        """Ajuste la largeur de la frame interne de la sidebar."""
+        self.sidebar_canvas.itemconfig(self.sidebar_window, width=event.width)
+
+    def _on_mousewheel(self, event) -> None:
+        if event.num == 4 or event.delta > 0: self.sidebar_canvas.yview_scroll(-1, "units")
+        elif event.num == 5 or event.delta < 0: self.sidebar_canvas.yview_scroll(1, "units")
 
     def _build_header(self) -> None:
         self.header_left = tk.Frame(self.header_card, bg=self.theme["panel_bg"])
@@ -125,7 +140,7 @@ class LottoApp:
 
         self.header_subtitle_label = tk.Label(
             self.header_left,
-            text="Tableau de tirage 1 a 90",
+            text="Tableau de tirage 1 à 90",
             font=("Segoe UI", 13),
             anchor="w",
         )
@@ -151,8 +166,24 @@ class LottoApp:
         self.content_frame.grid_columnconfigure(0, weight=0)
         self.content_frame.grid_columnconfigure(1, weight=1)
 
-        self.sidebar = tk.Frame(self.content_frame, bg=self.theme["app_bg"])
-        self.sidebar.grid(row=0, column=0, sticky="nsew", padx=(0, 18))
+        # Création du conteneur de Sidebar scrollable
+        self.sidebar_container = tk.Frame(self.content_frame, bg=self.theme["app_bg"])
+        self.sidebar_container.grid(row=0, column=0, sticky="nsew", padx=(0, 18))
+        
+        self.sidebar_canvas = tk.Canvas(self.sidebar_container, bg=self.theme["app_bg"], highlightthickness=0, width=350)
+        self.sidebar_scrollbar = tk.Scrollbar(self.sidebar_container, orient="vertical", command=self.sidebar_canvas.yview)
+        self.sidebar_canvas.configure(yscrollcommand=self.sidebar_scrollbar.set)
+        
+        self.sidebar_scrollbar.pack(side="right", fill="y")
+        self.sidebar_canvas.pack(side="left", fill="both", expand=True)
+
+        self.sidebar = tk.Frame(self.sidebar_canvas, bg=self.theme["app_bg"])
+        self.sidebar_window = self.sidebar_canvas.create_window((0, 0), window=self.sidebar, anchor="nw")
+
+        self.sidebar.bind("<Configure>", lambda e: self.sidebar_canvas.configure(scrollregion=self.sidebar_canvas.bbox("all")))
+        self.sidebar_canvas.bind("<Configure>", self._on_sidebar_resize)
+        self._bind_mouse_wheel(self.root)
+
         self.sidebar.grid_rowconfigure(0, weight=0)
         self.sidebar.grid_rowconfigure(1, weight=0)
         self.sidebar.grid_rowconfigure(2, weight=0)
@@ -197,7 +228,7 @@ class LottoApp:
 
     def _build_gain_card(self) -> None:
         self.gain_card = self._create_card(self.sidebar)
-        self.gain_card.grid(row=1, column=0, sticky="ew")
+        self.gain_card.grid(row=2, column=0, sticky="ew", pady=(18, 0))
 
         top = tk.Frame(self.gain_card, bg=self.theme["panel_bg"])
         top.pack(fill="x", padx=18, pady=(18, 8))
@@ -316,102 +347,32 @@ class LottoApp:
 
     def _build_control_card(self) -> None:
         self.control_card = self._create_card(self.sidebar)
-        self.control_card.grid(row=2, column=0, sticky="ew", pady=(18, 0))
+        self.control_card.grid(row=1, column=0, sticky="ew")
         self.control_card.grid_columnconfigure(0, weight=1)
 
         self.control_title_label = tk.Label(self.control_card, text="Commandes", font=("Segoe UI", 16, "bold"))
         self.control_title_label.grid(row=0, column=0, sticky="w", padx=18, pady=(18, 6))
 
-        self.control_animation_label = tk.Label(
-            self.control_card,
-            textvariable=self.animation_var,
-            font=("Segoe UI", 24, "bold"),
-            anchor="center",
-            pady=4,
-        )
-        self.control_animation_label.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 10))
-
         self.draw_panel = self._create_inner_panel(self.control_card)
-        self.draw_panel.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 10))
-
-        self.manual_panel = self._create_inner_panel(self.control_card)
-        self.manual_panel.grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 10))
-
-        self.reset_panel = self._create_inner_panel(self.control_card)
-        self.reset_panel.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 18))
+        self.draw_panel.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 18))
 
         self._fill_draw_panel()
-        self._fill_manual_panel()
-        self._fill_reset_panel()
 
     def _fill_draw_panel(self) -> None:
-        self.draw_title_label = tk.Label(self.draw_panel, text="Tirage automatique", font=("Segoe UI", 15, "bold"))
-        self.draw_title_label.pack(anchor="w")
-
-        self.draw_hint_label = tk.Label(
-            self.draw_panel, text="Animation 34 s avec ralentissement progressif", font=("Segoe UI", 11)
-        )
-        self.draw_hint_label.pack(anchor="w", pady=(4, 10))
-
         self.random_button = self._create_button(
             self.draw_panel, "Lancer le tirage", self.start_random_animation, self.theme["deep_green"], "#ffffff"
         )
-        self.random_button.pack(anchor="w")
-
-    def _fill_manual_panel(self) -> None:
-        self.manual_title_label = tk.Label(self.manual_panel, text="Ajout manuel", font=("Segoe UI", 15, "bold"))
-        self.manual_title_label.pack(anchor="w")
-
-        self.manual_hint_label = tk.Label(
-            self.manual_panel, text="Entrer un nombre entre 1 et 90", font=("Segoe UI", 11)
-        )
-        self.manual_hint_label.pack(anchor="w", pady=(4, 10))
-
-        controls = tk.Frame(self.manual_panel, bg=self.theme["soft_gold"])
-        controls.pack(anchor="w")
-        self.manual_controls_wrap = controls
-
-        self.entry = tk.Entry(
-            controls,
-            textvariable=self.manual_var,
-            bd=0,
-            relief="flat",
-            justify="center",
-            width=6,
-            font=("Segoe UI", 16, "bold"),
-            insertwidth=2,
-        )
-        self.entry.pack(side="left", ipady=8, padx=(0, 8))
-
-        self.add_button = self._create_button(controls, "Ajouter", self.add_from_field, self.theme["gold"], self.theme["ink"])
-        self.add_button.pack(side="left", padx=(0, 8))
-
-        self.undo_button = self._create_button(controls, "Annuler", self.undo_last_action, self.theme["undo_bg"], self.theme["ink"])
-        self.undo_button.pack(side="left")
-
-    def _fill_reset_panel(self) -> None:
-        self.reset_title_label = tk.Label(self.reset_panel, text="Nouvelle partie", font=("Segoe UI", 15, "bold"))
-        self.reset_title_label.pack(anchor="w")
-
-        self.reset_hint_label = tk.Label(
-            self.reset_panel, text="Efface la grille et remet la partie a zero", font=("Segoe UI", 11)
-        )
-        self.reset_hint_label.pack(anchor="w", pady=(4, 10))
-
-        self.reset_button = self._create_button(
-            self.reset_panel, "Reinitialiser", self.reset, self.theme["terracotta"], "#ffffff"
-        )
-        self.reset_button.pack(anchor="w")
+        self.random_button.pack(anchor="center", expand=True)
 
     def _bind_events(self) -> None:
         self.root.bind("<Return>", lambda _event: self.add_from_field() if not self.editing_title else None)
         self.root.bind("<Configure>", self._on_root_resize)
 
     def _create_card(self, parent: tk.Widget) -> tk.Frame:
-        return tk.Frame(parent, bd=0, highlightthickness=1)
+        return tk.Frame(parent, bd=0, highlightthickness=0)
 
     def _create_inner_panel(self, parent: tk.Widget) -> tk.Frame:
-        return tk.Frame(parent, bd=0, highlightthickness=1, padx=16, pady=14)
+        return tk.Frame(parent, bd=0, highlightthickness=0, padx=16, pady=14)
 
     def _create_tag(self, parent: tk.Widget, text: str) -> tk.Label:
         return tk.Label(parent, text=text, font=("Segoe UI", 11, "bold"), padx=10, pady=6)
@@ -474,7 +435,7 @@ class LottoApp:
         self._apply_window_title()
 
     def _apply_window_title(self) -> None:
-        self.root.title(self.title_var.get().strip() or "Loto Francais")
+        self.root.title(self.title_var.get().strip() or "Loto Français")
 
     def add_from_field(self) -> None:
         raw = self.manual_var.get().strip()
@@ -554,7 +515,7 @@ class LottoApp:
         self.animation_running = True
         self._set_controls_state("disabled")
         final_number = random.choice(remaining)
-        self._animate_roll(0, 34000, final_number)
+        self._animate_roll(0, 4000, final_number)
 
     def _animate_roll(self, elapsed: int, total_duration: int, final_number: int) -> None:
         progress = min(elapsed / total_duration, 1)
@@ -616,11 +577,18 @@ class LottoApp:
 
     def _refresh_recent_numbers(self) -> None:
         recent = list(reversed(self.drawn_numbers[-3:]))
+        # Couleurs de texte pour donner un effet de profondeur (le plus récent est plus vif)
+        fading_colors = [self.theme["deep_green"], self.theme["muted"], self.theme["muted"]]
+        
         for index, label in enumerate(self.ball_labels):
             if index < len(recent):
                 label.configure(text=f"{recent[index]:02d}")
+                # Appliquer une couleur plus discrète pour les anciens numéros
+                if index > 0:
+                    label.configure(fg=fading_colors[index])
             else:
                 label.configure(text="--")
+                label.configure(fg=self.theme["muted"])
 
     def _refresh_history(self) -> None:
         if not self.drawn_numbers:
@@ -688,11 +656,7 @@ class LottoApp:
         return [number for number in range(1, 91) if number not in self.drawn_numbers]
 
     def _set_controls_state(self, state: str) -> None:
-        self.entry.configure(state=state)
-        self.add_button.configure(state=state)
-        self.undo_button.configure(state=state)
         self.random_button.configure(state=state)
-        self.reset_button.configure(state=state)
         self.title_entry.configure(state=state)
         self.theme_toggle_button.configure(state=state)
         for button in self.gain_buttons:
@@ -707,21 +671,21 @@ class LottoApp:
         compact = width < 1280
         if compact != self.compact_layout:
             self.compact_layout = compact
-            self.sidebar.grid_forget()
+            self.sidebar_container.grid_forget()
             self.grid_area.grid_forget()
             if compact:
                 self.content_frame.grid_columnconfigure(0, weight=1)
                 self.content_frame.grid_columnconfigure(1, weight=0)
                 self.content_frame.grid_rowconfigure(0, weight=1)
                 self.content_frame.grid_rowconfigure(1, weight=1)
-                self.sidebar.grid(row=0, column=0, sticky="nsew", padx=0, pady=(0, 18))
+                self.sidebar_container.grid(row=0, column=0, sticky="nsew", padx=0, pady=(0, 18))
                 self.grid_area.grid(row=1, column=0, sticky="nsew")
             else:
                 self.content_frame.grid_rowconfigure(0, weight=1)
                 self.content_frame.grid_rowconfigure(1, weight=0)
                 self.content_frame.grid_columnconfigure(0, weight=0)
                 self.content_frame.grid_columnconfigure(1, weight=1)
-                self.sidebar.grid(row=0, column=0, sticky="nsew", padx=(0, 18), pady=0)
+                self.sidebar_container.grid(row=0, column=0, sticky="nsew", padx=(0, 18), pady=0)
                 self.grid_area.grid(row=0, column=1, sticky="nsew")
 
         scale = min(width / 1420, height / 920)
@@ -743,7 +707,6 @@ class LottoApp:
         self.grid_title_label.configure(font=("Segoe UI", max(14, int(18 * scale)), "bold"))
         self.grid_gain_status_label.configure(font=("Segoe UI", max(16, int(22 * scale)), "bold"))
         self.animation_label.configure(font=("Segoe UI", max(24, int(34 * scale)), "bold"))
-        self.control_animation_label.configure(font=("Segoe UI", max(18, int(24 * scale)), "bold"))
 
         ball_fonts = [
             ("Segoe UI", max(48, int(70 * scale)), "bold"),
@@ -753,11 +716,9 @@ class LottoApp:
         for label, font in zip(self.ball_labels, ball_fonts):
             label.configure(font=font)
 
-        self.entry.configure(font=("Segoe UI", max(12, int(16 * scale)), "bold"), width=max(5, int(6 * scale)))
-
         button_font = ("Segoe UI", max(10, int(12 * scale)), "bold")
-        for button in [self.theme_toggle_button, self.random_button, self.add_button, self.undo_button, self.reset_button]:
-            button.configure(font=button_font)
+        self.theme_toggle_button.configure(font=button_font)
+        self.random_button.configure(font=button_font)
         for button in self.gain_buttons:
             button.configure(font=("Segoe UI", max(9, int(11 * scale)), "bold"))
 
@@ -772,14 +733,12 @@ class LottoApp:
     def _apply_theme(self) -> None:
         self.root.configure(bg=self.theme["app_bg"])
         self.root_frame.configure(bg=self.theme["app_bg"])
+        self.sidebar_container.configure(bg=self.theme["app_bg"])
+        self.sidebar_canvas.configure(bg=self.theme["app_bg"])
         self.content_frame.configure(bg=self.theme["app_bg"])
 
         for card in [self.header_card, self.recent_card, self.gain_card, self.control_card, self.grid_card]:
-            card.configure(
-                bg=self.theme["panel_bg"],
-                highlightbackground=self.theme["panel_alt"],
-                highlightcolor=self.theme["panel_alt"],
-            )
+            card.configure(bg=self.theme["panel_bg"])
 
         for frame in [self.header_left, self.header_right, self.header_title_wrap]:
             frame.configure(bg=self.theme["panel_bg"])
@@ -817,17 +776,10 @@ class LottoApp:
             self.history_title_label,
             self.grid_title_label,
             self.control_title_label,
-            self.draw_title_label,
-            self.manual_title_label,
-            self.reset_title_label,
         ]:
             label.configure(bg=self.theme["panel_bg"] if label in [self.recent_title_label, self.gain_title_label, self.history_title_label, self.grid_title_label] else label.master.cget("bg"), fg=self.theme["ink"])
-
-        for label in [self.draw_hint_label, self.manual_hint_label, self.reset_hint_label]:
-            label.configure(bg=label.master.cget("bg"), fg=self.theme["muted"])
         self.grid_gain_status_label.configure(bg=self.theme["panel_alt"], fg=self.theme["gold"])
         self.animation_label.configure(bg=self.theme["panel_bg"], fg=self.theme["gold"])
-        self.control_animation_label.configure(bg=self.theme["soft_blue"], fg=self.theme["gold"])
 
         self.gain_button_row.configure(bg=self.theme["panel_bg"])
         self.history_card.configure(bg=self.theme["panel_bg"])
@@ -837,52 +789,13 @@ class LottoApp:
         self.grid_container.configure(bg=self.theme["panel_bg"])
         self._refresh_grid()
 
-        self.control_card.configure(
-            bg=self.theme["panel_bg"],
-            highlightbackground=self.theme["panel_alt"],
-            highlightcolor=self.theme["panel_alt"],
-        )
-        self.draw_panel.configure(
-            bg=self.theme["soft_green"],
-            highlightbackground=self._shade(self.theme["soft_green"], -0.15),
-            highlightcolor=self._shade(self.theme["soft_green"], -0.15),
-        )
-        self.manual_panel.configure(
-            bg=self.theme["soft_gold"],
-            highlightbackground=self._shade(self.theme["soft_gold"], -0.18),
-            highlightcolor=self._shade(self.theme["soft_gold"], -0.18),
-        )
-        self.reset_panel.configure(
-            bg=self.theme["soft_terracotta"],
-            highlightbackground=self._shade(self.theme["soft_terracotta"], -0.18),
-            highlightcolor=self._shade(self.theme["soft_terracotta"], -0.18),
-        )
-        self.manual_controls_wrap.configure(bg=self.theme["soft_gold"])
-
-        self.entry.configure(bg=self.theme["input_bg"], fg=self.theme["ink"], insertbackground=self.theme["ink"])
+        self.control_card.configure(bg=self.theme["panel_bg"])
+        self.draw_panel.configure(bg=self.theme["soft_green"])
 
         self.random_button.configure(
             bg=self.theme["deep_green"],
             fg="#ffffff",
             activebackground=self._shade(self.theme["deep_green"], -0.10),
-            activeforeground="#ffffff",
-        )
-        self.add_button.configure(
-            bg=self.theme["gold"],
-            fg=self.theme["grid_drawn_text"] if self.is_dark_mode.get() else self.theme["ink"],
-            activebackground=self._shade(self.theme["gold"], -0.10),
-            activeforeground=self.theme["grid_drawn_text"] if self.is_dark_mode.get() else self.theme["ink"],
-        )
-        self.undo_button.configure(
-            bg=self.theme["undo_bg"],
-            fg=self.theme["ink"],
-            activebackground=self._shade(self.theme["undo_bg"], -0.10),
-            activeforeground=self.theme["ink"],
-        )
-        self.reset_button.configure(
-            bg=self.theme["terracotta"],
-            fg="#ffffff",
-            activebackground=self._shade(self.theme["terracotta"], -0.10),
             activeforeground="#ffffff",
         )
 
@@ -915,7 +828,7 @@ class LottoApp:
 
     @staticmethod
     def _shade(color: str, amount: float) -> str:
-        r, g, b = LottoApp._hex_to_rgb(color)
+        r, g, b = LotoApp._hex_to_rgb(color)
         if amount >= 0:
             r = min(255, int(r + (255 - r) * amount))
             g = min(255, int(g + (255 - g) * amount))
@@ -930,8 +843,7 @@ class LottoApp:
 
 def main() -> None:
     root = tk.Tk()
-    app = LottoApp(root)
-    app.entry.focus_set()
+    app = LotoApp(root)
     root.mainloop()
 
 
