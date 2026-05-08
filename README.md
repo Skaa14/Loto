@@ -1,24 +1,23 @@
 # LotoFR (1 à 90)
 
-Application desktop autonome pour animer un loto français (bingo 1 à 90), avec interface moderne, historique en temps réel et tirage aléatoire animé.
+Application desktop moderne pour animer un loto français (1 à 90), incluant une gestion de thèmes, un historique stylisé et un tirage aléatoire avec suspense.
 
 ## Fonctionnalités
 
-- Ajout manuel d'un numéro (1 à 90) avec validation stricte.
-- Touche **Entrée** pour ajouter rapidement le numéro saisi.
+- **Double Thème** : Support complet du mode Sombre (Dark) et Clair (Light) pour s'adapter à toutes les ambiances.
 - Blocage strict des doublons.
 - Bouton **Reset**.
 - Affichage des 3 derniers numéros avec tailles différentes.
-- Historique complet des tirages, mis à jour en temps réel.
-- Grille complète 1..90 (10 colonnes), coloration immédiate des numéros tirés.
-- Tirage aléatoire avec animation ~3.5s et ralentissement progressif.
+- **Historique Premium** : Affichage agrandi et stylisé des numéros tirés sous forme de flux dynamique.
+- **Grille Interactive** : Visualisation 1..90 avec coloration intégrale des blocs de numéros tirés (vert pour les anciens, doré pour le dernier).
+- **Tirage avec Suspense** : Animation de ~3.5s avec ralentissement exponentiel (easing) avant l'arrêt sur le numéro final.
 - Verrouillage des interactions pendant l'animation.
 - Boutons d'annonce: **Quine simple**, **Quine double**, **Carton plein**.
 - Interface responsive (fenêtre redimensionnable), lisible pour écran/TV.
 
 ## Lancer en mode développement
 
-Prérequis: Python 3.11+.
+Prérequis: Python 3.9+ et la bibliothèque PySide6.
 
 ```bash
 python app.py
@@ -35,7 +34,7 @@ python app.py
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install -r requirements-build.txt
+python -m pip install pyside6 pyinstaller
 pyinstaller --noconfirm --onefile --windowed --name LotoFR app.py
 ```
 
