@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QSizePolicy
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QFont, QColor, QPalette
+from PySide6.QtGui import QFont, QColor, QPalette, QIcon
 
 class Theme:
     DARK = {
@@ -49,6 +49,7 @@ class LotoApp(QMainWindow):
         self.setWindowTitle("Loto Français")
         self.resize(1420, 920)
         self.setMinimumSize(1100, 750)
+        self.setWindowIcon(QIcon("bingoloto.ico"))
 
         self.drawn_numbers = []
         self.undo_stack = []
@@ -222,7 +223,7 @@ class LotoApp(QMainWindow):
     def _apply_theme(self):
         t = self.theme
         qss = f"""
-            QMainWindow {{ background-color: {t['app_bg']}; }}
+            QMainWindow, QDialog, QMessageBox {{ background-color: {t['app_bg']}; }}
             
             QScrollArea, QScrollArea > QWidget > QWidget {{
                 background-color: {t['app_bg']};
@@ -230,7 +231,7 @@ class LotoApp(QMainWindow):
             }}
 
             #header {{ background-color: {t['panel_bg']}; border-radius: 12px; }}
-            QLabel {{ color: {t['ink']}; }}
+            QLabel, QMessageBox QLabel {{ color: {t['ink']}; }}
             #subtitle, #cardTitle {{ color: {t['muted']}; }}
             #card {{ background-color: {t['panel_bg']}; border-radius: 12px; }}
             #gridPanel {{ background-color: {t['panel_bg']}; border-radius: 12px; padding: 10px; }}
@@ -296,7 +297,7 @@ class LotoApp(QMainWindow):
                 border-radius: 6px;
             }}
         """
-        self.setStyleSheet(qss)
+        QApplication.instance().setStyleSheet(qss)
         self.theme_btn.setText("☀️" if self.is_dark_mode else "🌙")
 
     def toggle_theme(self):
