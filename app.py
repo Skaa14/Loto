@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QSizePolicy
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QFont, QColor, QPalette
+from PySide6.QtGui import QFont, QColor, QPalette, QIcon
 
 class Theme:
     DARK = {
@@ -49,6 +49,7 @@ class LotoApp(QMainWindow):
         self.setWindowTitle("Loto Français")
         self.resize(1420, 920)
         self.setMinimumSize(1100, 750)
+        self.setWindowIcon(QIcon("bingoloto.ico"))
 
         self.drawn_numbers = []
         self.undo_stack = []
