@@ -223,7 +223,7 @@ class LotoApp(QMainWindow):
     def _apply_theme(self):
         t = self.theme
         qss = f"""
-            QMainWindow {{ background-color: {t['app_bg']}; }}
+            QMainWindow, QDialog, QMessageBox {{ background-color: {t['app_bg']}; }}
             
             QScrollArea, QScrollArea > QWidget > QWidget {{
                 background-color: {t['app_bg']};
@@ -231,7 +231,7 @@ class LotoApp(QMainWindow):
             }}
 
             #header {{ background-color: {t['panel_bg']}; border-radius: 12px; }}
-            QLabel {{ color: {t['ink']}; }}
+            QLabel, QMessageBox QLabel {{ color: {t['ink']}; }}
             #subtitle, #cardTitle {{ color: {t['muted']}; }}
             #card {{ background-color: {t['panel_bg']}; border-radius: 12px; }}
             #gridPanel {{ background-color: {t['panel_bg']}; border-radius: 12px; padding: 10px; }}
@@ -297,7 +297,7 @@ class LotoApp(QMainWindow):
                 border-radius: 6px;
             }}
         """
-        self.setStyleSheet(qss)
+        QApplication.instance().setStyleSheet(qss)
         self.theme_btn.setText("☀️" if self.is_dark_mode else "🌙")
 
     def toggle_theme(self):
