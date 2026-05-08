@@ -46,3 +46,5 @@ Le binaire final sera généré ici:
 
 - Le `.exe` produit par PyInstaller avec `--onefile` est autonome côté utilisateur final.
 - Aucune dépendance serveur: application 100% locale.
+
+[![Télécharger l'application](https://img.shields.io/badge/Download-Loto_v1.0-blue?style=for-the-badge&logo=windows)](https://github.com/Skaa14/Loto/releases/download/Jeu/BingoLoto.exe)
