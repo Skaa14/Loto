@@ -1,7 +1,7 @@
 # LotoFR (1 à 90)
 
 <p align="center">
-  <img src="bingoloto.ico" width="100" height="100" alt="LotoFR Logo">
+  <img src="bingoloto.ico" width="100" height="100" alt="BingoLoto Logo">
   <br>
   <b>Application desktop moderne pour animer vos lotos.</b>
   <br><br>
