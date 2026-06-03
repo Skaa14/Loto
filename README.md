@@ -22,6 +22,7 @@ Application desktop moderne pour animer un loto français (1 à 90), incluant un
 Prérequis: Python 3.9+ et la bibliothèque PySide6.
 
 ```bash
+python -m pip install -r requirements.txt
 python app.py
 ```
 
