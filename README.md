@@ -1,8 +1,18 @@
-[![Télécharger l'application](https://img.shields.io/badge/Download-Loto_v1.0-blue?style=for-the-badge&logo=windows)](https://github.com/Skaa14/Loto/releases/download/Jeu/BingoLoto.exe)
-
 # LotoFR (1 à 90)
 
-Application desktop moderne pour animer un loto français (1 à 90), incluant une gestion de thèmes, un historique stylisé et un tirage aléatoire avec suspense.
+<p align="center">
+  <img src="bingoloto.ico" width="100" height="100" alt="LotoFR Logo">
+  <br>
+  <b>Application desktop moderne pour animer vos lotos.</b>
+  <br><br>
+  <a href="https://github.com/Skaa14/Loto/releases/latest">
+    <img src="https://img.shields.io/badge/TÉLÉCHARGER-LotoFR_Windows-blue?style=for-the-badge&logo=windows" alt="Télécharger LotoFR">
+  </a>
+</p>
+
+---
+
+LotoFR est une application complète pour animer un loto français (1 à 90), incluant une gestion de thèmes, un historique stylisé et un tirage aléatoire avec suspense.
 
 ## Fonctionnalités
 
