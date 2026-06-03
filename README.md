@@ -6,7 +6,7 @@
   <b>Application desktop moderne pour animer vos lotos.</b>
   <br><br>
   <a href="https://github.com/Skaa14/Loto/releases/latest">
-    <img src="https://img.shields.io/badge/TÉLÉCHARGER-LotoFR_Windows-blue?style=for-the-badge&logo=windows" alt="Télécharger BingoLoto">
+    <img src="https://img.shields.io/badge/TÉLÉCHARGER-BingoLoto_Windows-blue?style=for-the-badge&logo=windows" alt="Télécharger BingoLoto">
   </a>
 </p>
 
