@@ -1,3 +1,4 @@
+import os
 import sys
 import random
 from PySide6.QtWidgets import (
@@ -7,6 +8,14 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QFont, QColor, QPalette, QIcon
+
+def resource_path(relative_path):
+    """ Obtient le chemin absolu vers la ressource, compatible dev et PyInstaller """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class Theme:
     DARK = {
@@ -184,7 +193,7 @@ class LotoApp(QMainWindow):
         self.setWindowTitle("Loto Français")
         self.resize(1420, 920)
         self.setMinimumSize(1000, 700)
-        self.setWindowIcon(QIcon("bingoloto.ico"))
+        self.setWindowIcon(QIcon(resource_path("bingoloto.ico")))
 
         self.drawn_numbers = []
         self.undo_stack = []
