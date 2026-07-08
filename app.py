@@ -136,7 +136,10 @@ class PublicWindow(QMainWindow):
         if anim_val:
             # Pendant l'animation
             self.ball_labels[0].setText(anim_val)
-            self.ball_labels[0].setStyleSheet(self.ball_labels[0].styleSheet().replace(self.theme['grid_idle'], self.theme['gold']))
+            self.ball_labels[0].setStyleSheet(
+                f"background-color: {self.theme['panel_alt']}; border-radius: 110px; "
+                f"color: {self.theme['gold']}; border: 4px solid {self.theme['gold']};"
+            )
             recent = list(reversed(drawn_numbers[-2:]))
             for i in range(1, 3):
                 val = f"{recent[i-1]:02d}" if (i-1) < len(recent) else "--"
@@ -206,9 +209,7 @@ class LotoApp(QMainWindow):
         self._setup_ui()
         self._apply_theme()
         
-        # Timer pour l'animation de tirage
-        self.anim_timer = QTimer()
-        self.anim_timer.timeout.connect(self._animation_step)
+        # État de l'animation de tirage (le scheduling se fait via QTimer.singleShot)
         self.anim_elapsed = 0
         self.anim_total = 3500
         self.final_number = 0
