@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QPushButton, QLabel, QFrame, QScrollArea, QMessageBox,
     QLineEdit, QSizePolicy
 )
-from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve, QEvent
 from PySide6.QtGui import QFont, QColor, QPalette, QIcon
 
 def resource_path(relative_path):
@@ -54,6 +54,8 @@ class ClickableLabel(QLabel):
 
 class PublicWindow(QMainWindow):
     """Fenêtre destinée au vidéoprojecteur (Public)"""
+    closed = Signal()
+
     def __init__(self, theme):
         super().__init__()
         self.setWindowTitle("Loto - Affichage Public")
@@ -61,6 +63,12 @@ class PublicWindow(QMainWindow):
         self.ball_labels = []
         self.cells = {}
         self._setup_ui()
+
+    def closeEvent(self, event):
+        # Prévient la fenêtre principale (Alt+F4, bouton X, etc.) pour qu'elle
+        # ne garde pas une référence obsolète et puisse rouvrir le projecteur
+        self.closed.emit()
+        super().closeEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         """Double-clic pour basculer entre plein écran et fenêtré"""
@@ -109,16 +117,21 @@ class PublicWindow(QMainWindow):
         # Middle: Grid
         grid_frame = QFrame()
         grid_frame.setObjectName("gridPanel")
+        grid_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.num_grid = QGridLayout(grid_frame)
         self.num_grid.setSpacing(8)
         for n in range(1, 91):
             lbl = QLabel(str(n))
-            lbl.setFixedSize(85, 70)
+            lbl.setMinimumSize(85, 70)
+            lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             lbl.setAlignment(Qt.AlignCenter)
-            lbl.setFont(QFont("Segoe UI", 22, QFont.Bold))
+            lbl.setFont(QFont("Segoe UI", 26, QFont.Bold))
             lbl.setObjectName("gridCell")
-            # Style par défaut (idle)
-            lbl.setStyleSheet(f"background-color: {self.theme['grid_idle']}; color: {self.theme['ink']}; border-radius: 8px;")
+            # Style par défaut (idle), même charte que la grille de l'app principale
+            lbl.setStyleSheet(
+                f"background-color: {self.theme['grid_idle']}; color: {self.theme['ink']}; "
+                f"border-radius: 8px; border: 3px solid transparent; font-weight: bold;"
+            )
             self.num_grid.addWidget(lbl, (n-1)//10, (n-1)%10)
             self.cells[n] = lbl
         layout.addWidget(grid_frame, stretch=1)
@@ -159,16 +172,20 @@ class PublicWindow(QMainWindow):
                     f"color: {text_color}; border: 4px solid {color};"
                 )
 
-        # Update Grid
+        # Update Grid (bordure colorée + fond, même charte que la grille de l'app principale)
         last_num = drawn_numbers[-1] if drawn_numbers and not anim_val else None
         for n, lbl in self.cells.items():
             if n == last_num:
-                color = self.theme['grid_last']
+                bg, border = self.theme['grid_last'], self.theme['terracotta']
             elif n in drawn_numbers:
-                color = self.theme['grid_drawn']
+                bg, border = self.theme['grid_drawn'], self.theme['deep_green']
             else:
-                color = self.theme['grid_idle']
-            lbl.setStyleSheet(f"background-color: {color}; color: {self.theme['grid_text'] if n in drawn_numbers else self.theme['ink']}; border-radius: 8px;")
+                bg, border = self.theme['grid_idle'], "transparent"
+            text_color = self.theme['grid_text'] if n in drawn_numbers else self.theme['ink']
+            lbl.setStyleSheet(
+                f"background-color: {bg}; color: {text_color}; border-radius: 8px; "
+                f"border: 3px solid {border}; font-weight: bold;"
+            )
 
         # Update History & Gain
         self.gain_label.setText(current_gain or "Loto Français")
@@ -200,6 +217,7 @@ class LotoApp(QMainWindow):
 
         self.drawn_numbers = []
         self.undo_stack = []
+        self.redo_stack = []
         self.animation_running = False
         self.current_gain = ""
         self.is_dark_mode = True
@@ -208,11 +226,28 @@ class LotoApp(QMainWindow):
 
         self._setup_ui()
         self._apply_theme()
-        
+        QApplication.instance().installEventFilter(self)
+
         # État de l'animation de tirage (le scheduling se fait via QTimer.singleShot)
         self.anim_elapsed = 0
         self.anim_total = 3500
         self.final_number = 0
+
+        self._refresh_ui()
+
+    def closeEvent(self, event):
+        # Ferme aussi la fenêtre publique (vidéoprojecteur), y compris en plein écran
+        if self.public_window:
+            self.public_window.close()
+        super().closeEvent(event)
+
+    def eventFilter(self, obj, event):
+        # Valide le titre si on clique en dehors du champ d'édition
+        if event.type() == QEvent.MouseButtonPress and self.title_edit.isVisible():
+            local_pos = self.title_edit.mapFromGlobal(event.globalPosition().toPoint())
+            if not self.title_edit.rect().contains(local_pos):
+                self.title_edit.clearFocus()
+        return super().eventFilter(obj, event)
 
     def _setup_ui(self):
         central_widget = QWidget()
@@ -260,28 +295,88 @@ class LotoApp(QMainWindow):
 
         # --- Content Area ---
         content_layout = QHBoxLayout()
-        
-        # Sidebar (Scrollable)
-        sidebar_scroll = QScrollArea()
-        sidebar_scroll.setWidgetResizable(True)
-        sidebar_scroll.setFixedWidth(380)
-        sidebar_scroll.setFrameShape(QFrame.NoFrame)
-        
-        sidebar_content = QWidget()
-        self.sidebar_vbox = QVBoxLayout(sidebar_content)
-        self.sidebar_vbox.setSpacing(20)
-        
-        # Derniers numéros
+        content_layout.setSpacing(20)
+
+        # ===== Colonne gauche : tirage en cours + derniers numéros + historique =====
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFixedWidth(300)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+
+        left_content = QWidget()
+        left_vbox = QVBoxLayout(left_content)
+        left_vbox.setSpacing(20)
+
+        # Numéro en cours de tirage + derniers numéros
         recent_card = self._create_card("Derniers numéros")
+        self.anim_label = QLabel("--")
+        self.anim_label.setObjectName("animLabel")
+        self.anim_label.setAlignment(Qt.AlignCenter)
+        self.anim_label.setFont(QFont("Segoe UI", 54, QFont.Bold))
+        recent_card.layout().addWidget(self.anim_label)
+
         self.ball_labels = []
-        for i, size in enumerate([60, 35, 25]):
+        for i, size in enumerate([36, 26, 20]):
             lbl = QLabel("--")
             lbl.setAlignment(Qt.AlignCenter)
             lbl.setFont(QFont("Segoe UI", size, QFont.Bold))
             lbl.setObjectName(f"ball_{i}")
             recent_card.layout().addWidget(lbl)
             self.ball_labels.append(lbl)
-        self.sidebar_vbox.addWidget(central_widget_card := recent_card)
+        left_vbox.addWidget(recent_card)
+
+        # Historique (discret, compact, sous les derniers numéros, taille adaptative)
+        history_card = self._create_card("Historique")
+        self.history_title_label = history_card.title_label
+        self.history_label = QLabel("")
+        self.history_label.setWordWrap(True)
+        self.history_label.setObjectName("historyLabel")
+        self.history_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        history_card.layout().addWidget(self.history_label)
+        left_vbox.addWidget(history_card)
+
+        left_vbox.addStretch()
+        left_scroll.setWidget(left_content)
+        content_layout.addWidget(left_scroll)
+
+        # ===== Colonne centrale : grille 1-90, espace maximisé =====
+        grid_area = QVBoxLayout()
+
+        self.gain_display = QLabel("Aucune annonce")
+        self.gain_display.setObjectName("gainDisplay")
+        self.gain_display.setAlignment(Qt.AlignCenter)
+        self.gain_display.setFont(QFont("Segoe UI", 34, QFont.Bold))
+        self.gain_display.setMinimumHeight(70)
+        grid_area.addWidget(self.gain_display)
+
+        self.grid_widget = QFrame()
+        self.grid_widget.setObjectName("gridPanel")
+        self.grid_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.num_grid = QGridLayout(self.grid_widget)
+        self.num_grid.setSpacing(5)
+        self.cells = {}
+
+        for n in range(1, 91):
+            btn = QPushButton(str(n))
+            btn.setMinimumSize(60, 50)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            btn.setFont(QFont("Segoe UI", 22, QFont.Bold))
+            btn.clicked.connect(lambda ch, num=n: self.add_number(num))
+            self.num_grid.addWidget(btn, (n-1)//10, (n-1)%10)
+            self.cells[n] = btn
+
+        grid_area.addWidget(self.grid_widget, 1)
+        content_layout.addLayout(grid_area, 1)
+
+        # ===== Colonne droite : commandes + annonces =====
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFixedWidth(300)
+        right_scroll.setFrameShape(QFrame.NoFrame)
+
+        right_content = QWidget()
+        right_vbox = QVBoxLayout(right_content)
+        right_vbox.setSpacing(20)
 
         # Commandes
         control_card = self._create_card("Commandes")
@@ -290,75 +385,42 @@ class LotoApp(QMainWindow):
         self.draw_btn.setMinimumHeight(60)
         self.draw_btn.clicked.connect(self.start_random_draw)
         control_card.layout().addWidget(self.draw_btn)
-        
-        self.undo_btn = QPushButton("Annuler")
-        self.reset_btn = QPushButton("Reset")
+
+        self.undo_btn = QPushButton("◀ Retour")
+        self.redo_btn = QPushButton("Avance ▶")
         self.undo_btn.clicked.connect(self.undo_action)
+        self.redo_btn.clicked.connect(self.redo_action)
+        nav_hbox = QHBoxLayout()
+        nav_hbox.addWidget(self.undo_btn)
+        nav_hbox.addWidget(self.redo_btn)
+        control_card.layout().addLayout(nav_hbox)
+
+        self.reset_btn = QPushButton("Reset")
         self.reset_btn.clicked.connect(self.reset_game)
-        reset_hbox = QHBoxLayout()
-        reset_hbox.addWidget(self.undo_btn)
-        reset_hbox.addWidget(self.reset_btn)
-        control_card.layout().addLayout(reset_hbox)
-        self.sidebar_vbox.addWidget(control_card)
+        control_card.layout().addWidget(self.reset_btn)
+        right_vbox.addWidget(control_card)
 
         # Annonces
         gain_card = self._create_card("Annonces")
+        self.gain_hint_label = QLabel("⚠ Choisissez une annonce")
+        self.gain_hint_label.setObjectName("hintLabel")
+        self.gain_hint_label.setAlignment(Qt.AlignCenter)
+        self.gain_hint_label.setWordWrap(True)
+        self.gain_hint_label.hide()
+        gain_card.layout().addWidget(self.gain_hint_label)
+
         self.gain_btns = []
         for text in ["Quine simple", "Double quine", "Carton plein"]:
             btn = QPushButton(text)
             btn.clicked.connect(lambda ch, t=text: self.set_gain(t))
             gain_card.layout().addWidget(btn)
             self.gain_btns.append(btn)
-        self.sidebar_vbox.addWidget(gain_card)
-        
-        self.sidebar_vbox.addStretch()
-        sidebar_scroll.setWidget(sidebar_content)
-        content_layout.addWidget(sidebar_scroll)
+        right_vbox.addWidget(gain_card)
 
-        # Main Grid Area
-        grid_area = QVBoxLayout()
-        
-        # Status bar (Gain + Tirage en cours)
-        status_hbox = QHBoxLayout()
-        self.gain_display = QLabel("Aucune annonce")
-        self.gain_display.setObjectName("gainDisplay")
-        self.gain_display.setAlignment(Qt.AlignCenter)
-        self.gain_display.setFont(QFont("Segoe UI", 20, QFont.Bold))
-        
-        self.anim_label = QLabel("--")
-        self.anim_label.setObjectName("animLabel")
-        self.anim_label.setFixedWidth(100)
-        self.anim_label.setAlignment(Qt.AlignCenter)
-        self.anim_label.setFont(QFont("Segoe UI", 40, QFont.Bold))
-        
-        status_hbox.addWidget(self.gain_display, 1)
-        status_hbox.addWidget(self.anim_label)
-        grid_area.addLayout(status_hbox)
+        right_vbox.addStretch()
+        right_scroll.setWidget(right_content)
+        content_layout.addWidget(right_scroll)
 
-        # History
-        self.history_label = QLabel("Historique : ")
-        self.history_label.setWordWrap(True)
-        self.history_label.setObjectName("historyLabel")
-        grid_area.addWidget(self.history_label)
-
-        # Grille 1-90
-        self.grid_widget = QFrame()
-        self.grid_widget.setObjectName("gridPanel")
-        self.num_grid = QGridLayout(self.grid_widget)
-        self.num_grid.setSpacing(5)
-        self.cells = {}
-        
-        for n in range(1, 91):
-            btn = QPushButton(str(n))
-            btn.setFixedSize(65, 55)
-            btn.setFont(QFont("Segoe UI", 14, QFont.Bold))
-            btn.clicked.connect(lambda ch, num=n: self.add_number(num))
-            self.num_grid.addWidget(btn, (n-1)//10, (n-1)%10)
-            self.cells[n] = btn
-            
-        grid_area.addWidget(self.grid_widget)
-        content_layout.addLayout(grid_area, 1)
-        
         self.main_layout.addLayout(content_layout)
 
     def _create_card(self, title):
@@ -370,6 +432,7 @@ class LotoApp(QMainWindow):
         lbl.setObjectName("cardTitle")
         lbl.setFont(QFont("Segoe UI", 10, QFont.Bold))
         layout.addWidget(lbl)
+        card.title_label = lbl
         return card
 
     def _apply_theme(self):
@@ -390,11 +453,8 @@ class LotoApp(QMainWindow):
             
             #historyLabel {{
                 font-family: 'Segoe UI Semibold', 'Trebuchet MS', sans-serif;
-                font-size: 20px;
-                line-height: 1.4;
-                background-color: {t['panel_alt']};
-                padding: 12px;
-                border-radius: 10px;
+                line-height: 1.6;
+                color: {t['muted']};
             }}
 
             QPushButton {{
@@ -406,39 +466,55 @@ class LotoApp(QMainWindow):
                 font-weight: bold;
             }}
             QPushButton:hover {{ background-color: {t['muted']}; }}
-            
+            QPushButton:disabled {{ background-color: {t['grid_idle']}; color: {t['muted']}; }}
+
             #drawBtn {{
                 background-color: {t['deep_green']};
                 color: white;
                 font-size: 16px;
             }}
+            #drawBtn:disabled {{ background-color: {t['grid_idle']}; color: {t['muted']}; }}
             
             #gainDisplay {{
                 background-color: {t['panel_alt']};
                 color: {t['gold']};
                 border-radius: 12px;
                 margin-bottom: 5px;
+                padding: 10px;
             }}
             
-            #animLabel {{ color: {t['gold']}; }}
+            #animLabel {{
+                color: {t['gold']};
+                background-color: {t['panel_alt']};
+                border-radius: 14px;
+                padding: 14px;
+            }}
+
+            #hintLabel {{
+                color: {t['terracotta']};
+                background-color: {t['panel_alt']};
+                border-radius: 8px;
+                padding: 8px;
+                font-weight: bold;
+            }}
             
             #gridPanel QPushButton {{
                 background-color: {t['grid_idle']};
                 color: {t['ink']};
-                font-size: 18px;
+                font-size: 28px;
             }}
-            
+
             #gridPanel QPushButton.drawn {{
                 background-color: {t['grid_drawn']} !important;
                 color: {t['grid_text']} !important;
-                border: none;
+                border: 3px solid {t['deep_green']};
                 font-weight: bold;
             }}
 
             #gridPanel QPushButton.last-drawn {{
                 background-color: {t['grid_last']} !important;
                 color: {t['grid_text']} !important;
-                border: none;
+                border: 3px solid {t['terracotta']};
                 font-weight: bold;
             }}
             
@@ -480,7 +556,8 @@ class LotoApp(QMainWindow):
     def toggle_projector(self):
         if self.public_window is None:
             self.public_window = PublicWindow(self.theme)
-            
+            self.public_window.closed.connect(self._on_public_window_closed)
+
             # Détection du 2ème écran
             screens = QApplication.screens()
             if len(screens) > 1:
@@ -493,7 +570,9 @@ class LotoApp(QMainWindow):
             self._refresh_ui()
         else:
             self.public_window.close()
-            self.public_window = None
+
+    def _on_public_window_closed(self):
+        self.public_window = None
 
     def add_number(self, num):
         if self.animation_running: return
@@ -502,16 +581,19 @@ class LotoApp(QMainWindow):
             return
 
         self.undo_stack.append({"numbers": list(self.drawn_numbers), "gain": self.current_gain})
+        self.redo_stack.clear()
         self.drawn_numbers.append(num)
         self._refresh_ui()
-        
+
         if len(self.drawn_numbers) == 90:
             QMessageBox.information(self, "Fin", "Tous les numéros ont été tirés !")
 
     def start_random_draw(self):
+        if not self.current_gain or self.animation_running:
+            return
         remaining = [i for i in range(1, 91) if i not in self.drawn_numbers]
         if not remaining: return
-        
+
         self.animation_running = True
         self.final_number = random.choice(remaining)
         self.anim_elapsed = 0
@@ -521,13 +603,10 @@ class LotoApp(QMainWindow):
     def _animation_step(self):
         # Calcul de la progression (0.0 à 1.0)
         progress = min(self.anim_elapsed / self.anim_total, 1.0)
-        
+
         if self.anim_elapsed >= self.anim_total:
             self.animation_running = False
-            self.draw_btn.setEnabled(True)
             self.add_number(self.final_number)
-            # On affiche le numéro final de façon permanente
-            self.anim_label.setText(f"{self.final_number:02d}")
             return
 
         # Calcul d'un délai exponentiel pour l'effet de ralentissement
@@ -551,10 +630,18 @@ class LotoApp(QMainWindow):
 
     def undo_action(self):
         if not self.undo_stack: return
+        self.redo_stack.append({"numbers": list(self.drawn_numbers), "gain": self.current_gain})
         state = self.undo_stack.pop()
         self.drawn_numbers = state["numbers"]
         self.current_gain = state["gain"]
-        self.anim_label.setText("--")
+        self._refresh_ui()
+
+    def redo_action(self):
+        if not self.redo_stack: return
+        self.undo_stack.append({"numbers": list(self.drawn_numbers), "gain": self.current_gain})
+        state = self.redo_stack.pop()
+        self.drawn_numbers = state["numbers"]
+        self.current_gain = state["gain"]
         self._refresh_ui()
 
     def reset_game(self):
@@ -564,7 +651,6 @@ class LotoApp(QMainWindow):
         if confirm == QMessageBox.Yes:
             self.drawn_numbers.clear()
             self.current_gain = ""
-            self.anim_label.setText("--")
             self._refresh_ui()
 
     def _refresh_ui(self):
@@ -581,6 +667,8 @@ class LotoApp(QMainWindow):
             btn.style().polish(btn)
 
         # Update Balls (Derniers numéros)
+        if not self.animation_running:
+            self.anim_label.setText(f"{last_num:02d}" if last_num else "--")
         recent = list(reversed(self.drawn_numbers[-3:]))
         for i in range(3):
             val = f"{recent[i]:02d}" if i < len(recent) else "--"
@@ -589,16 +677,39 @@ class LotoApp(QMainWindow):
             color = self.theme['deep_green'] if i == 0 else self.theme['muted']
             self.ball_labels[i].setStyleSheet(f"color: {color};")
 
-        # Update History
+        # Update History (discret, taille adaptative selon le nombre de tirages)
+        total = len(self.drawn_numbers)
+        self.history_title_label.setText(f"HISTORIQUE ({total})")
+        if total <= 10:
+            num_size = 26
+        elif total <= 25:
+            num_size = 21
+        elif total <= 45:
+            num_size = 17
+        elif total <= 70:
+            num_size = 14
+        else:
+            num_size = 12
+
         items = []
         for n in self.drawn_numbers:
-            # Le dernier numéro est en doré, les autres en vert
-            color = self.theme['gold'] if n == last_num else self.theme['deep_green']
-            items.append(f'<span style="color: {color}; font-weight: bold;">{n:02d}</span>')
-        
-        hist_text = " &nbsp; ".join(items)
-        self.history_label.setText(f'<span style="color: {self.theme["muted"]}; font-size: 14px; font-weight: normal;">Historique ({len(self.drawn_numbers)}) :</span><br>{hist_text}')
+            # Le dernier numéro est en doré, les autres restent discrets
+            color = self.theme['gold'] if n == last_num else self.theme['muted']
+            weight = "bold" if n == last_num else "normal"
+            items.append(f'<span style="font-size: {num_size}px; color: {color}; font-weight: {weight};">{n:02d}</span>')
+
+        sep = f'<span style="color: {self.theme["muted"]};"> · </span>'
+        hist_text = sep.join(items) if items else f'<span style="color: {self.theme["muted"]};">Aucun tirage</span>'
+        self.history_label.setText(hist_text)
         self.gain_display.setText(self.current_gain or "Aucune annonce")
+
+        # Disponibilité des commandes
+        has_gain = bool(self.current_gain)
+        remaining = any(i not in self.drawn_numbers for i in range(1, 91))
+        self.draw_btn.setEnabled(has_gain and not self.animation_running and remaining)
+        self.undo_btn.setEnabled(bool(self.undo_stack))
+        self.redo_btn.setEnabled(bool(self.redo_stack))
+        self.gain_hint_label.setVisible(not has_gain)
 
         # Sync Public Window
         if self.public_window:
